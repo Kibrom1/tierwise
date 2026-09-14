@@ -33,9 +33,9 @@ client.messages.create(model=decision.model, ...)  # your existing call, unchang
 What comes back for a few shapes:
 
 ```
-minimal     -> claude-haiku-4-5   | low    | heuristic
-with hint   -> claude-opus-4-5    | hint
-with floor  -> claude-sonnet-4-5  | floor
+minimal     -> claude-haiku-4-5-20251001   | low    | heuristic
+with hint   -> claude-opus-5    | hint
+with floor  -> claude-sonnet-5  | floor
 ```
 
 `decision.model` is the only field you strictly need. `.tier`, `.confidence`,
@@ -53,7 +53,7 @@ Non-Python callers shell out — this is the whole CI integration:
 
 ```bash
 MODEL=$(tierwise route "add a filter param" --category feature --files 3 --lines 90 --model-only)
-# claude-sonnet-4-5
+# claude-sonnet-5
 ```
 
 ### Adopt it in stages
@@ -350,15 +350,15 @@ To roll back, delete the thresholds file; defaults resume.
 ## Before production
 
 - **Set the model names and commit them.** Run `tierwise models`; anything
-  marked `default (unverified)` is a built-in guess, not a choice. Put the real
-  ones in a `tierwise.toml` at your project root so CI, the tuning cron and
+  marked `default` is a built-in, not a choice you made. Put the ones you want
+  in a `tierwise.toml` at your project root so CI, the tuning cron and
   every developer resolve the same names:
 
   ```toml
   [models]
-  low = "claude-haiku-4-5"
-  medium = "claude-sonnet-4-5"
-  high = "claude-opus-4-5"
+  low = "claude-haiku-4-5-20251001"
+  medium = "claude-sonnet-5"
+  high = "claude-opus-5"
   ```
 
   Any provider works — the strings are handed back verbatim.

@@ -11,11 +11,11 @@ Precedence, highest first:
 3. the project config file (see config.py)
 4. the built-in defaults
 
-The built-in defaults are a convenience, not a recommendation -- they are
-Anthropic model IDs that may well be out of date, and are wrong by construction
-for any other provider. Because a wrong model id fails loudly at call time but
-looks authoritative in a listing, every resolved name carries its origin, and
-``tierwise models`` prints it.
+The built-in defaults are a convenience, not a recommendation: they are
+Anthropic model IDs, correct when this was written and certain to age, and wrong
+by construction for any other provider. Because a wrong model id fails loudly at
+call time but looks authoritative in a listing, every resolved name carries its
+origin, and ``tierwise models`` prints it.
 """
 
 from __future__ import annotations
@@ -29,9 +29,9 @@ from .config import ConfigError, load_config
 from .models import Tier
 
 DEFAULT_MODELS: dict[Tier, str] = {
-    Tier.LOW: "claude-haiku-4-5",
-    Tier.MEDIUM: "claude-sonnet-4-5",
-    Tier.HIGH: "claude-opus-4-5",
+    Tier.LOW: "claude-haiku-4-5-20251001",
+    Tier.MEDIUM: "claude-sonnet-5",
+    Tier.HIGH: "claude-opus-5",
 }
 
 ENV_KEYS: dict[Tier, str] = {
@@ -40,7 +40,7 @@ ENV_KEYS: dict[Tier, str] = {
     Tier.HIGH: "TIERWISE_MODEL_HIGH",
 }
 
-EXPLICIT, ENV, CONFIG, DEFAULT = "explicit", "env", "config", "default (unverified)"
+EXPLICIT, ENV, CONFIG, DEFAULT = "explicit", "env", "config", "default"
 
 
 @dataclass

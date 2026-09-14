@@ -38,7 +38,7 @@ Python 3.10+.
 ```console
 $ tierwise route "fix a typo in the README" --category typo --lines 2
 tier:       low
-model:      claude-haiku-4-5
+model:      claude-haiku-4-5-20251001
 source:     heuristic
 confidence: 1.00
 why:        complexity score 0.00 -> low (drivers: category_prior=-1.30)
@@ -46,7 +46,7 @@ why:        complexity score 0.00 -> low (drivers: category_prior=-1.30)
 $ tierwise route "add a filter param to the reports endpoint" \
     --category feature --files 3 --lines 90 --depth 1 --needs-context
 tier:       medium
-model:      claude-sonnet-4-5
+model:      claude-sonnet-5
 source:     heuristic
 confidence: 1.00
 why:        complexity score 0.47 -> medium (drivers: category_prior=+1.56, requires_context=+1.50, file_count=+1.00)
@@ -54,7 +54,7 @@ why:        complexity score 0.47 -> medium (drivers: category_prior=+1.56, requ
 $ tierwise route "redesign billing persistence" --category architecture \
     --files 30 --lines 2000 --depth 6 --needs-context --ambiguity 0.9
 tier:       high
-model:      claude-opus-4-5
+model:      claude-opus-5
 source:     heuristic
 confidence: 1.00
 why:        complexity score 1.00 -> high (drivers: file_count=+3.00, lines_changed=+3.00, ambiguity=+2.70)
@@ -67,7 +67,7 @@ for a classifier call:
 $ tierwise route "refactor the auth middleware" --category refactor \
     --files 4 --lines 150 --depth 2 --needs-context --ambiguity 0.3
 tier:       high
-model:      claude-opus-4-5
+model:      claude-opus-5
 source:     llm
 confidence: 0.50
 why:        complexity score 0.65 -> medium (...); ambiguous -> stub classifier:
@@ -378,7 +378,7 @@ router = Router(classifier=LLMClassifier(
 
 # in production
 router = Router(classifier=LLMClassifier(
-    call_fn=make_anthropic_call_fn(model="claude-haiku-4-5")
+    call_fn=make_anthropic_call_fn(model="claude-haiku-4-5-20251001")
 ))
 ```
 
@@ -393,7 +393,7 @@ To use live classification:
 pip install -e ".[anthropic]"
 export ANTHROPIC_API_KEY=sk-...
 export TIERWISE_CLASSIFIER=anthropic
-export TIERWISE_CLASSIFIER_MODEL=claude-haiku-4-5   # optional
+export TIERWISE_CLASSIFIER_MODEL=claude-haiku-4-5-20251001   # optional
 ```
 
 `AnthropicClassifier` degrades to the stub on any failure — missing SDK, missing
@@ -410,9 +410,9 @@ tuning cron and every developer resolve the same names:
 
 ```toml
 [models]
-low = "claude-haiku-4-5"
-medium = "claude-sonnet-4-5"
-high = "claude-opus-4-5"
+low = "claude-haiku-4-5-20251001"
+medium = "claude-sonnet-5"
+high = "claude-opus-5"
 ```
 
 `tierwise.json` with the same shape works too, and needs no TOML parser (which
@@ -426,21 +426,22 @@ defaults. `tierwise models` shows which applied:
 $ tierwise models
 low     gpt-5-mini                   [config]
 medium  llama-4-70b                  [config]
-high    claude-opus-4-5              [env]
+high    claude-opus-5              [env]
 
 config file: /srv/app/tierwise.json
 ```
 
-**The built-in defaults are guesses**, not recommendations — Anthropic IDs that
-may be out of date, and wrong by construction for any other provider. They are
-labelled `default (unverified)` precisely so a guess never reads as a choice.
+**The built-in defaults are a convenience, not a recommendation** — Anthropic
+IDs, correct when written and certain to age, and wrong by construction for any
+other provider. They are labelled `default` precisely so a built-in never reads
+as a choice you made.
 
 | Variable | Default |
 | --- | --- |
 | `TIERWISE_CONFIG` | nearest `tierwise.toml` / `tierwise.json` |
 | `TIERWISE_MODEL_LOW` / `_MEDIUM` / `_HIGH` | see above |
 | `TIERWISE_CLASSIFIER` | `stub` (`anthropic` for live) |
-| `TIERWISE_CLASSIFIER_MODEL` | `claude-haiku-4-5` |
+| `TIERWISE_CLASSIFIER_MODEL` | `claude-haiku-4-5-20251001` |
 | `TIERWISE_THRESHOLDS` | `~/.tierwise/thresholds.json` |
 
 A config file that exists but cannot be parsed raises `ConfigError` rather than
@@ -457,7 +458,7 @@ router = Router(telemetry=JsonlSink("routing.jsonl"))
 ```
 
 ```json
-{"tier": "low", "model": "claude-haiku-4-5", "confidence": 1.0, "source": "heuristic",
+{"tier": "low", "model": "claude-haiku-4-5-20251001", "confidence": 1.0, "source": "heuristic",
  "rationale": "complexity score 0.00 -> low (...)", "attempt": 1, "escalated_from": null,
  "signals": {...}, "event": "routing_decision", "timestamp": 1773450000.0, "elapsed_ms": 0.07}
 ```

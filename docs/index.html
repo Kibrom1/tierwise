@@ -322,7 +322,7 @@
 
   <header class="masthead">
     <div class="wordmark">Tier<span class="wise">Wise</span></div>
-    <div class="eyebrow">complexity-aware model routing for Python</div>
+    <div class="eyebrow">a Python library for complexity-aware model routing</div>
   </header>
 
   <nav class="sections" aria-label="Sections">
@@ -747,12 +747,12 @@ runner = TaskRunner(executor=my_executor, verify=<span class="k">lambda</span> r
       <p class="note col">
         Model names belong in a <code>tierwise.toml</code> you commit, so CI, the tuning cron and every
         developer resolve the same ones. <code>tierwise models</code> shows where each came from, and
-        marks anything unset as a guess rather than a choice:
+        marks anything unset as a built-in rather than a choice:
       </p>
       <pre class="col">$ tierwise models
 low     gpt-5-mini                   [config]
 medium  llama-4-70b                  [config]
-high    claude-opus-4-5              [env]</pre>
+high    claude-opus-5              [env]</pre>
     </div>
   </section>
 
@@ -904,7 +904,7 @@ result.ok, result.tier, result.tiers, result.total_cost_usd</pre>
             <thead><tr><th>variable</th><th>default</th></tr></thead>
             <tbody>
               <tr><td class="w">TIERWISE_CONFIG</td><td>nearest <code>tierwise.toml</code> / <code>tierwise.json</code></td></tr>
-              <tr><td class="w">TIERWISE_MODEL_LOW / _MEDIUM / _HIGH</td><td>built-in, marked unverified</td></tr>
+              <tr><td class="w">TIERWISE_MODEL_LOW / _MEDIUM / _HIGH</td><td>built-in, marked <code>default</code></td></tr>
               <tr><td class="w">TIERWISE_CLASSIFIER</td><td><code>stub</code> &mdash; no network, no key</td></tr>
               <tr><td class="w">TIERWISE_CLASSIFIER_MODEL</td><td>a cheap-tier model</td></tr>
               <tr><td class="w">TIERWISE_THRESHOLDS</td><td><code>~/.tierwise/thresholds.json</code></td></tr>
@@ -941,7 +941,7 @@ result.ok, result.tier, result.tiers, result.total_cost_usd</pre>
           telemetry, tuning &mdash; runs with invented model names on a machine with no provider SDK
           installed.</p>
           <p>The built-in default names are Anthropic IDs, so set your own first; they are labelled
-          <code>default (unverified)</code> for exactly that reason.</p>
+          <code>default</code> so a built-in never reads as a choice you made.</p>
         </div>
       </details>
       <details>
@@ -1012,7 +1012,7 @@ result.ok, result.tier, result.tiers, result.total_cost_usd</pre>
     <div class="limits col">
       <div class="limit"><span class="mark">01</span><p><b>It does not extract the signals.</b> Wrong signals in, wrong tier out.</p></div>
       <div class="limit"><span class="mark">02</span><p><b>It is only as good as your verifier.</b> A weak check teaches the tuner from noise.</p></div>
-      <div class="limit"><span class="mark">03</span><p><b>The built-in model names are guesses.</b> Set your own before the first call.</p></div>
+      <div class="limit"><span class="mark">03</span><p><b>The built-in model names are defaults, and they age.</b> Set your own before the first call.</p></div>
       <div class="limit"><span class="mark">04</span><p><b>Three tiers is the model.</b> Five meaningful sizes, or routing across providers by price, would be collapsing something finer.</p></div>
       <div class="limit"><span class="mark">05</span><p><b>Auto-applied tuning drifts on its own.</b> Bounded &mdash; and still drift.</p></div>
     </div>

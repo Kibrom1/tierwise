@@ -142,7 +142,7 @@ class AnthropicClassifier(LLMClassifier):
         api_key: Optional[str] = None,
     ) -> None:
         super().__init__(call_fn=None, fallback=fallback)
-        self.model = model or os.environ.get("TIERWISE_CLASSIFIER_MODEL", "claude-haiku-4-5")
+        self.model = model or os.environ.get("TIERWISE_CLASSIFIER_MODEL", "claude-haiku-4-5-20251001")
         self.max_tokens = max_tokens
         self.api_key = api_key
         self._client = client
@@ -175,7 +175,7 @@ def make_anthropic_call_fn(
 
         client = anthropic.Anthropic(api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"))
 
-    target_model = model or os.environ.get("TIERWISE_CLASSIFIER_MODEL", "claude-haiku-4-5")
+    target_model = model or os.environ.get("TIERWISE_CLASSIFIER_MODEL", "claude-haiku-4-5-20251001")
 
     def call_fn(prompt: str) -> str:
         response = client.messages.create(

@@ -178,8 +178,8 @@ def _cmd_models(args: argparse.Namespace) -> int:
     print()
     print(f"config file: {described['config_file'] or 'none found'}")
     if not described["configured"]:
-        print("No model names configured -- these are built-in guesses. Set them in "
-              "tierwise.toml or TIERWISE_MODEL_LOW/_MEDIUM/_HIGH.")
+        print("No model names configured -- these are built-in defaults, which age. "
+              "Set yours in tierwise.toml or TIERWISE_MODEL_LOW/_MEDIUM/_HIGH.")
     return 0
 
 

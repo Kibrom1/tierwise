@@ -11,9 +11,9 @@ directory:
 
     # tierwise.toml
     [models]
-    low = "claude-haiku-4-5"
-    medium = "claude-sonnet-4-5"
-    high = "claude-opus-4-5"
+    low = "claude-haiku-4-5-20251001"
+    medium = "claude-sonnet-5"
+    high = "claude-opus-5"
 
 ``tierwise.json`` with the same shape works too, and needs no TOML parser --
 which matters on Python 3.10, where ``tomllib`` does not exist.

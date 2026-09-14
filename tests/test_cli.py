@@ -58,12 +58,12 @@ def test_models_command_lists_all_tiers(capsys):
     assert described["configured"] is False
 
 
-def test_models_command_flags_unverified_defaults(capsys):
-    """A guessed model id must not read as a chosen one."""
+def test_models_command_marks_defaults_as_defaults(capsys):
+    """A built-in model id must not read as a chosen one."""
     assert main(["models"]) == 0
     out = capsys.readouterr().out
-    assert "default (unverified)" in out
-    assert "built-in guesses" in out
+    assert "[default]" in out
+    assert "built-in defaults, which age" in out
 
 
 def test_missing_subcommand_exits(capsys):
