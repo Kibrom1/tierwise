@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import enum
+import uuid
 from dataclasses import dataclass, field, asdict
 from typing import Any, Optional
 
@@ -109,8 +110,17 @@ class RoutingDecision:
     attempt: int = 1
     escalated_from: Optional[Tier] = None
 
+    # Loop identity. A decision belongs to a step of a session, and outcomes
+    # reported later are joined back to it by decision_id.
+    decision_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    session_id: Optional[str] = None
+    step_index: Optional[int] = None
+
     def to_dict(self) -> dict[str, Any]:
         return {
+            "decision_id": self.decision_id,
+            "session_id": self.session_id,
+            "step_index": self.step_index,
             "tier": self.tier.value,
             "model": self.model,
             "confidence": round(self.confidence, 3),

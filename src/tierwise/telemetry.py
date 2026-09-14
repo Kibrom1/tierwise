@@ -11,7 +11,7 @@ import json
 import sys
 import time
 from pathlib import Path
-from typing import Any, Protocol, TYPE_CHECKING
+from typing import Any, Iterator, Optional, Protocol, TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover
     from .models import RoutingDecision
@@ -53,3 +53,51 @@ def build_event(decision: "RoutingDecision", elapsed_ms: float) -> dict[str, Any
     event["timestamp"] = time.time()
     event["elapsed_ms"] = round(elapsed_ms, 3)
     return event
+
+
+def build_outcome_event(
+    decision: "RoutingDecision",
+    outcome: str,
+    cost_usd: Optional[float] = None,
+) -> dict[str, Any]:
+    """An outcome is a separate append-only event keyed to the decision.
+
+    Mutating the original event in place would be tidier to read, but it only
+    works while the process is alive -- and the whole point of recording
+    outcomes is that a later run can learn from them.
+    """
+    return {
+        "event": "task_outcome",
+        "timestamp": time.time(),
+        "decision_id": decision.decision_id,
+        "session_id": decision.session_id,
+        "step_index": decision.step_index,
+        "tier": decision.tier.value,
+        "source": decision.source.value,
+        "attempt": decision.attempt,
+        "outcome": outcome,
+        "cost_usd": cost_usd,
+    }
+
+
+def build_tuning_event(result: dict[str, Any]) -> dict[str, Any]:
+    """Record a threshold change, so every tuned value is traceable."""
+    return {"event": "threshold_tuning", "timestamp": time.time(), **result}
+
+
+def read_events(path: str | Path) -> Iterator[dict[str, Any]]:
+    """Read a JSONL log, skipping lines that are not valid JSON objects."""
+    target = Path(path)
+    if not target.exists():
+        return
+    with target.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(event, dict):
+                yield event

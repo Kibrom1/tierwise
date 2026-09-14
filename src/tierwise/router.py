@@ -9,6 +9,10 @@ Precedence, highest first:
 
 A ``min_tier`` floor is applied last, so a task can be pinned above whatever the
 classifiers concluded.
+
+The Router itself is stateless -- one instance is safe to share across
+concurrent tasks. Per-task state (step index, tier history, the decision an
+outcome refers to) belongs to RoutingSession.
 """
 
 from __future__ import annotations
@@ -23,14 +27,17 @@ from .llm_classifier import Classifier, default_classifier
 from .mapping import ModelMap
 from .models import RoutingDecision, Source, TaskSignals, Tier
 from .telemetry import NullSink, TelemetrySink, build_event
+from .thresholds import Thresholds
 
-# Heuristic confidence below this is treated as ambiguous and handed to the LLM.
-DEFAULT_CONFIDENCE_THRESHOLD = 0.5
+# Kept for callers that imported it before thresholds became tunable.
+DEFAULT_CONFIDENCE_THRESHOLD = Thresholds().llm_fallback
 
 
 @dataclass
 class RouterConfig:
-    confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD
+    #: None means "use the tuned Thresholds value" -- set it to pin a threshold
+    #: that the outer loop cannot move.
+    confidence_threshold: Optional[float] = None
     trust_hints: bool = True
     escalation: EscalationPolicy = field(default_factory=EscalationPolicy)
 
@@ -42,16 +49,31 @@ class Router:
         classifier: Optional[Classifier] = None,
         config: Optional[RouterConfig] = None,
         telemetry: Optional[TelemetrySink] = None,
+        thresholds: Optional[Thresholds] = None,
     ) -> None:
         self.model_map = model_map or ModelMap.from_env()
         self.classifier = classifier or default_classifier()
         self.config = config or RouterConfig()
         self.telemetry = telemetry or NullSink()
+        #: Loaded from disk when not supplied, so thresholds the tuner wrote in
+        #: an earlier run are in force from the first decision of this one.
+        self.thresholds = thresholds if thresholds is not None else Thresholds.load()
+
+    @property
+    def confidence_threshold(self) -> float:
+        if self.config.confidence_threshold is not None:
+            return self.config.confidence_threshold
+        return self.thresholds.llm_fallback
 
     # -- public API ----------------------------------------------------------
 
-    def route(self, signals: TaskSignals) -> RoutingDecision:
-        """Route one task to a tier and model."""
+    def route(
+        self,
+        signals: TaskSignals,
+        session_id: Optional[str] = None,
+        step_index: Optional[int] = None,
+    ) -> RoutingDecision:
+        """Route one task -- or one step of one -- to a tier and model."""
         started = time.perf_counter()
 
         if self.config.trust_hints and signals.tier_hint is not None:
@@ -62,8 +84,8 @@ class Router:
                 f"engineer hint: {signals.tier_hint.value}",
             )
         else:
-            classification, _score = heuristics.classify(signals)
-            if classification.confidence >= self.config.confidence_threshold:
+            classification, _score = heuristics.classify(signals, self.thresholds)
+            if classification.confidence >= self.confidence_threshold:
                 tier, confidence, source, rationale = (
                     classification.tier,
                     classification.confidence,
@@ -90,6 +112,8 @@ class Router:
             source=source,
             rationale=rationale,
             signals=signals,
+            session_id=session_id,
+            step_index=step_index,
         )
 
         elapsed_ms = (time.perf_counter() - started) * 1000
@@ -102,10 +126,13 @@ class Router:
         """Feed back what happened. Returns a re-route if one is warranted."""
         started = time.perf_counter()
         escalated = self.config.escalation.escalate(
-            decision, Outcome(outcome) if isinstance(outcome, str) else outcome,
+            decision,
+            Outcome(outcome) if isinstance(outcome, str) else outcome,
             self.model_map.model_for,
         )
         if escalated is not None:
+            escalated.session_id = decision.session_id
+            escalated.step_index = decision.step_index
             elapsed_ms = (time.perf_counter() - started) * 1000
             self.telemetry.emit(build_event(escalated, elapsed_ms))
         return escalated

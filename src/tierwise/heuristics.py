@@ -9,15 +9,17 @@ case that should fall through to the LLM classifier.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 from .models import Classification, Source, TaskSignals, Tier
+from .thresholds import DEFAULT_THRESHOLDS, Thresholds
 
-# Boundaries on the normalized 0..1 complexity score.
-LOW_MEDIUM_BOUNDARY = 0.30
-MEDIUM_HIGH_BOUNDARY = 0.70
-
-# Score distance from a boundary within which we call the result ambiguous.
-BOUNDARY_MARGIN = 0.07
+# Default boundaries on the normalized 0..1 complexity score. These are the
+# starting point only -- the live values come from a Thresholds instance, which
+# the ThresholdTuner rewrites from observed outcomes.
+LOW_MEDIUM_BOUNDARY = DEFAULT_THRESHOLDS.low_medium
+MEDIUM_HIGH_BOUNDARY = DEFAULT_THRESHOLDS.medium_high
+BOUNDARY_MARGIN = DEFAULT_THRESHOLDS.boundary_margin
 
 # Category priors. Deliberately small: category is a weak signal on its own and
 # is only here to break ties, not to drive the decision.
@@ -86,30 +88,38 @@ def score_task(signals: TaskSignals) -> Score:
     return Score(value=normalized, contributions=contributions)
 
 
-def tier_for_score(value: float) -> Tier:
-    if value < LOW_MEDIUM_BOUNDARY:
+def tier_for_score(value: float, thresholds: Optional[Thresholds] = None) -> Tier:
+    t = thresholds or DEFAULT_THRESHOLDS
+    if value < t.low_medium:
         return Tier.LOW
-    if value < MEDIUM_HIGH_BOUNDARY:
+    if value < t.medium_high:
         return Tier.MEDIUM
     return Tier.HIGH
 
 
-def confidence_for_score(value: float) -> float:
-    """Confidence = normalized distance to the nearest tier boundary."""
-    distance = min(
-        abs(value - LOW_MEDIUM_BOUNDARY),
-        abs(value - MEDIUM_HIGH_BOUNDARY),
-    )
-    # BOUNDARY_MARGIN away from a boundary is where confidence reaches ~0.5;
+def confidence_for_score(value: float, thresholds: Optional[Thresholds] = None) -> float:
+    """Confidence = normalized distance to the nearest tier boundary.
+
+    Continuous by construction: a score sitting on a cut is confidence 0, and it
+    climbs smoothly from there. That matters for the outer loop -- if confidence
+    could only take a handful of discrete values, moving a threshold by a small
+    step would either change nothing or change everything.
+    """
+    t = thresholds or DEFAULT_THRESHOLDS
+    distance = min(abs(value - t.low_medium), abs(value - t.medium_high))
+    # boundary_margin away from a cut is where confidence reaches ~0.5;
     # anything further scales up toward 1.0.
-    return max(0.0, min(1.0, distance / (BOUNDARY_MARGIN * 2)))
+    return max(0.0, min(1.0, distance / (t.boundary_margin * 2)))
 
 
-def classify(signals: TaskSignals) -> tuple[Classification, Score]:
+def classify(
+    signals: TaskSignals, thresholds: Optional[Thresholds] = None
+) -> tuple[Classification, Score]:
     """Classify a task heuristically, returning the verdict and its score."""
+    t = thresholds or DEFAULT_THRESHOLDS
     score = score_task(signals)
-    tier = tier_for_score(score.value)
-    confidence = confidence_for_score(score.value)
+    tier = tier_for_score(score.value, t)
+    confidence = confidence_for_score(score.value, t)
 
     drivers = score.top_drivers()
     if drivers:

@@ -13,6 +13,8 @@ from .mapping import ModelMap
 from .models import TaskSignals, Tier
 from .router import Router, RouterConfig
 from .telemetry import JsonlSink, NullSink, StderrSink
+from .thresholds import Thresholds, resolve_path
+from .tuner import ThresholdTuner
 
 
 def _add_signal_args(parser: argparse.ArgumentParser) -> None:
@@ -73,6 +75,20 @@ def _build_parser() -> argparse.ArgumentParser:
     explain.add_argument("--json", action="store_true", help="emit the breakdown as JSON")
 
     subparsers.add_parser("models", help="print the current tier -> model mapping")
+    subparsers.add_parser("thresholds", help="print the thresholds currently in force")
+
+    tune = subparsers.add_parser(
+        "tune", help="close the outer loop: retune thresholds from a decision log"
+    )
+    tune.add_argument("log", help="JSONL decision log written by --telemetry")
+    tune.add_argument("--dry-run", action="store_true",
+                      help="report the proposed change without persisting it")
+    tune.add_argument("--min-samples", type=int, default=20,
+                      help="outcomes required before any adjustment (default: 20)")
+    tune.add_argument("--target-failure-rate", type=float, default=0.10,
+                      help="failure rate the loop steers toward (default: 0.10)")
+    tune.add_argument("--step", type=float, default=0.03,
+                      help="maximum threshold movement per run (default: 0.03)")
     return parser
 
 
@@ -133,9 +149,35 @@ def _cmd_models(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_thresholds(_args: argparse.Namespace) -> int:
+    thresholds = Thresholds.load()
+    payload = thresholds.to_dict()
+    payload["path"] = str(resolve_path())
+    payload["tuned"] = thresholds.version > 0
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_tune(args: argparse.Namespace) -> int:
+    tuner = ThresholdTuner(
+        step=args.step,
+        min_samples=args.min_samples,
+        target_failure_rate=args.target_failure_rate,
+    )
+    result = tuner.tune(args.log, apply=not args.dry_run)
+    print(json.dumps(result.to_dict(), indent=2))
+    return 0
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _build_parser().parse_args(argv)
-    handlers = {"route": _cmd_route, "explain": _cmd_explain, "models": _cmd_models}
+    handlers = {
+        "route": _cmd_route,
+        "explain": _cmd_explain,
+        "models": _cmd_models,
+        "thresholds": _cmd_thresholds,
+        "tune": _cmd_tune,
+    }
     return handlers[args.command](args)
 
 

@@ -1,6 +1,7 @@
 # TierWise
 
-Route coding tasks to the cheapest model tier that can actually do them.
+Route each step of a task to the cheapest model tier that can actually do it —
+and let the thresholds learn from what happens next.
 
 Over-provisioning is the default failure mode of LLM-assisted engineering: a
 one-line typo fix and a cross-cutting billing rewrite both get sent to the most
@@ -73,6 +74,8 @@ tierwise models                                              # current tier -> m
 tierwise route ... --json                                    # full decision as JSON
 tierwise route ... --model-only                              # just the model id, for scripts
 tierwise route ... --telemetry routing.jsonl                 # append the decision to a log
+tierwise thresholds                                          # thresholds in force
+tierwise tune routing.jsonl [--dry-run]                      # close the outer loop
 ```
 
 ## Library use
@@ -100,7 +103,84 @@ if retry:
     print("escalated to", retry.model)
 ```
 
-## How a decision is made
+## The two loops
+
+Routing is not one decision per task. It is a decision per *step*, and a slower
+decision about how to decide.
+
+### Inner loop — per-step routing
+
+An agent working a task takes many steps, and they are not equally hard. A
+router that picks one tier per task re-creates the problem it exists to solve,
+one level down: every step pays for the hardest step in the task.
+
+`RoutingSession` routes each step independently. The tier climbs for one gnarly
+step and drops straight back for the next — nothing carries the previous tier
+forward.
+
+```python
+from tierwise import JsonlSink, Outcome, Router, RoutingSession, TaskSignals
+
+session = RoutingSession(router=Router(telemetry=JsonlSink("loop.jsonl")))
+
+for step in agent_steps:
+    decision = session.route_step(TaskSignals(...))
+    result = run_step(step, model=decision.model)
+    session.mark_outcome(Outcome.SUCCESS if result.ok else Outcome.INSUFFICIENT,
+                         cost_usd=result.cost)
+
+print(session.summary()["tier_history"])   # ['low', 'high', 'low', 'low']
+```
+
+`mark_outcome` returns a re-route when the step earned an escalation, and `None`
+when it did not — so the caller retries on a higher tier without restarting the
+task.
+
+`Router` holds no per-task state, so one instance serves any number of
+concurrent sessions.
+
+### Outer loop — thresholds learn from outcomes
+
+`ThresholdTuner` reads the persisted decision log, joins each decision to the
+outcome reported for it, and moves the cuts those decisions came from.
+
+```bash
+tierwise tune loop.jsonl              # apply and persist
+tierwise tune loop.jsonl --dry-run    # report the proposed change only
+tierwise thresholds                   # what is in force right now
+```
+
+```
+tuner: tightened (failure rate above target -- routing higher)
+  samples: 34  failure_rate: 0.8824
+  before: {'low_medium': 0.30, 'medium_high': 0.70, 'llm_fallback': 0.50}
+  after:  {'low_medium': 0.27, 'medium_high': 0.67, 'llm_fallback': 0.53}
+```
+
+Two properties make this a loop rather than a report:
+
+- **Outcomes persist.** `mark_outcome` appends a separate `task_outcome` event
+  keyed to the decision id, rather than mutating an event in memory. A tuner
+  that learns only from the task currently in flight never accumulates enough
+  evidence to be right.
+- **Thresholds persist.** Tuned values are written to
+  `~/.tierwise/thresholds.json` (override with `TIERWISE_THRESHOLDS`) and loaded
+  by the next `Router`. Learning that dies at process exit is not learning.
+
+**Failure is treated asymmetrically, on purpose.** Under-provisioning shows up
+in outcome data; over-provisioning does not — the top tier never fails a task
+the cheap tier could have done. So the loop tightens on observed failures and
+relaxes only on their sustained absence, which is the sole evidence that the
+cheap side has room.
+
+Because tuning auto-applies, the guardrails are load-bearing: a minimum sample
+count before acting, one bounded step per run (0.03), a hard floor and ceiling,
+an enforced gap between the tier cuts, and a recorded `threshold_tuning` event
+for every change. Outcomes from engineer hints, `min_tier` floors, and
+escalation retries are excluded from the failure rate — none of those were the
+classifier's call to get wrong. `Outcome.ERROR` is excluded too.
+
+## How a single decision is made
 
 Precedence, highest first:
 
@@ -130,7 +210,15 @@ classifiers concluded.
 The raw sum is normalized to 0.0–1.0 and cut at `0.30` (low/medium) and `0.70`
 (medium/high). Confidence is the distance from the nearest boundary: a score
 sitting on a cut is confidence 0, which is exactly what routes it to the
-classifier. All constants live at the top of `heuristics.py`.
+classifier.
+
+Confidence is **continuous**, not bucketed. That matters for the outer loop: if
+confidence could only take a handful of discrete values, moving a threshold by a
+small step would either change nothing or change everything, and a tuner that
+can only overshoot is worse than none.
+
+These are starting values, not constants — the live ones come from a
+`Thresholds` instance that the tuner rewrites.
 
 ### Escalation
 
@@ -177,6 +265,7 @@ Model IDs change. Nothing in the routing logic needs editing when they do:
 | `TIERWISE_MODEL_HIGH` | `claude-opus-4-5` |
 | `TIERWISE_CLASSIFIER` | `stub` (`anthropic` for live) |
 | `TIERWISE_CLASSIFIER_MODEL` | `claude-haiku-4-5` |
+| `TIERWISE_THRESHOLDS` | `~/.tierwise/thresholds.json` |
 
 **Check the defaults against current model IDs before relying on them** — or
 pass an explicit `ModelMap(...)`.
@@ -210,9 +299,12 @@ src/tierwise/
   mapping.py         tier -> model, env-overridable
   escalation.py      outcomes and the bump-one-tier policy
   telemetry.py       decision events and sinks
-  router.py          orchestration and precedence
-  cli.py             route / explain / models
-tests/               45 tests, no network
+  router.py          orchestration and precedence (stateless)
+  session.py         RoutingSession — the inner loop
+  thresholds.py      the tunable cuts, and where they persist
+  tuner.py           ThresholdTuner — the outer loop
+  cli.py             route / explain / models / thresholds / tune
+tests/               87 tests, no network
 ```
 
 ## Development
@@ -226,6 +318,9 @@ pytest -q
 ## Roadmap
 
 - Signal extraction from a real diff or working tree, so callers stop supplying
-  counts by hand
-- Tuning the boundaries against logged telemetry rather than by judgement
-- Per-tier cost accounting in the decision event
+  counts by hand — the biggest remaining gap, since the router currently assumes
+  someone already knows the file and line counts
+- Per-tier cost accounting rolled up from `cost_usd`, so the loop can optimize
+  spend directly instead of using tier as a proxy for it
+- A tuner that fits the cuts from the score distribution rather than nudging
+  them a fixed step at a time

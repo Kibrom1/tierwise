@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tierwise"
-version = "0.1.0"
-description = "Route coding tasks to the cheapest model tier that can actually do them."
+version = "0.2.0"
+description = "Loop-aware AI model routing: route each step of a task to the cheapest tier that can do it, and tune the thresholds from outcomes."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
