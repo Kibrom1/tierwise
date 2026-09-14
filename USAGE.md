@@ -4,6 +4,72 @@ A guide for someone already calling Claude to do engineering work — through th
 Anthropic SDK, a coding agent, or CI — who wants each step to run on the
 cheapest model that can actually do it.
 
+## Install
+
+Not on PyPI. Two real options:
+
+```bash
+pip install -e /path/to/tierwise                              # local / vendored
+pip install "tierwise @ git+https://github.com/Kibrom1/tierwise.git"
+```
+
+Zero runtime dependencies, so it drops into an existing project without
+dragging anything in. The `[anthropic]` extra is only needed for the live
+classifier fallback; `[dev]` pulls pytest.
+
+## Your first decision
+
+Three lines. This is the complete minimum:
+
+```python
+from tierwise import Router, TaskSignals, Tier
+
+router = Router()                                  # once, at startup
+decision = router.route(TaskSignals(category="bugfix", file_count=4, lines_changed=150))
+
+client.messages.create(model=decision.model, ...)  # your existing call, unchanged
+```
+
+What comes back for a few shapes:
+
+```
+minimal     -> claude-haiku-4-5   | low    | heuristic
+with hint   -> claude-opus-4-5    | hint
+with floor  -> claude-sonnet-4-5  | floor
+```
+
+`decision.model` is the only field you strictly need. `.tier`, `.confidence`,
+`.source` and `.rationale` are there for logging, and for arguing with the
+decision later.
+
+Two shortcuts that skip signal estimation entirely:
+
+```python
+TaskSignals(description="migrate payments schema", tier_hint=Tier.HIGH)  # you already know
+TaskSignals(category="typo", lines_changed=2, min_tier=Tier.MEDIUM)      # floor, not a pin
+```
+
+Non-Python callers shell out — this is the whole CI integration:
+
+```bash
+MODEL=$(tierwise route "add a filter param" --category feature --files 3 --lines 90 --model-only)
+# claude-sonnet-4-5
+```
+
+### Adopt it in stages
+
+Those three lines are already a useful integration. Everything else is opt-in:
+
+| Stage | You add | You get |
+| --- | --- | --- |
+| 1 | `Router.route()` | per-task routing, today |
+| 2 | `RoutingSession.route_step()` | per-step routing inside an agent loop |
+| 3 | `mark_outcome()` | escalation when a step comes back wrong |
+| 4 | `tierwise tune` | thresholds that move with observed outcomes |
+
+Do not skip to stage 4. The tuner is only as good as your definition of
+failure — without a signal you trust, it trains on noise.
+
 ## The one thing to understand first
 
 **TierWise decides. You execute.** It never calls a model. `route()` hands back
@@ -28,10 +94,9 @@ nothing to work with:
 | The actual model call | — |
 | An outcome label — did it work? | an escalation, and evidence for tuning |
 
-## Run the example first
+## See the whole loop
 
 ```bash
-pip install -e .
 python examples/claude_agent_loop.py --tune
 ```
 
