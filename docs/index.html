@@ -322,7 +322,7 @@
 
   <header class="masthead">
     <div class="wordmark">Tier<span class="wise">Wise</span></div>
-    <div class="eyebrow">Python 3.10+ &middot; no runtime dependencies &middot; 174 tests &middot; MIT</div>
+    <div class="eyebrow">Python 3.10+ &middot; no runtime dependencies &middot; MIT</div>
   </header>
 
   <nav class="sections" aria-label="Sections">
@@ -951,9 +951,9 @@ result.ok, result.tier, result.tiers, result.total_cost_usd</pre>
       <details>
         <summary>Will it change my routing behind my back?</summary>
         <div class="answer">
-          <p>Only when you run the tuner, and only within guardrails: twenty outcomes per boundary,
-          one 0.03 step per run, a hard floor and ceiling, and a logged event for every change.
-          A watermark stops the same evidence being counted twice.</p>
+          <p>Only when you run the tuner, and only within the
+          <a href="#loops">bounds described above</a>. A watermark stops the same evidence being
+          counted twice, so a cron cannot compound one bad week.</p>
           <p>To remove the drift entirely, pass explicit <code>Thresholds</code> &mdash; the tuned file
           is then ignored &mdash; or tune with <code>--dry-run</code> and commit the changes yourself.</p>
         </div>
@@ -1010,7 +1010,6 @@ result.ok, result.tier, result.tiers, result.total_cost_usd</pre>
       <div class="limit"><span class="mark">03</span><p><b>The built-in model names are guesses.</b> They are labelled <code>default (unverified)</code> for that reason. Set your own before the first call.</p></div>
       <div class="limit"><span class="mark">04</span><p><b>Three tiers is the model.</b> That maps onto most small/mid/large lineups. Five meaningful sizes, or routing across providers by price, would be collapsing something finer.</p></div>
       <div class="limit"><span class="mark">05</span><p><b>Auto-applied tuning drifts on its own.</b> Bounded &mdash; one step per run, floor, ceiling, every change logged &mdash; but real.</p></div>
-      <div class="limit"><span class="mark">06</span><p><b>The cost figures on this page are illustrative.</b> Per-step prices are placeholders from the bundled example, not measured rates. Substitute your own before drawing conclusions.</p></div>
     </div>
   </section>
 
