@@ -54,7 +54,9 @@ class Router:
         self.model_map = model_map or ModelMap.from_env()
         self.classifier = classifier or default_classifier()
         self.config = config or RouterConfig()
-        self.telemetry = telemetry or NullSink()
+        # Not `telemetry or NullSink()`: a sink that defines __len__ (such as
+        # an empty TelemetryLog) is falsy, and would be silently discarded.
+        self.telemetry = telemetry if telemetry is not None else NullSink()
         #: Loaded from disk when not supplied, so thresholds the tuner wrote in
         #: an earlier run are in force from the first decision of this one.
         self.thresholds = thresholds if thresholds is not None else Thresholds.load()
@@ -144,6 +146,6 @@ class Router:
         tier: Tier, signals: TaskSignals, rationale: str
     ) -> tuple[Tier, str]:
         floor = signals.min_tier
-        if floor is not None and tier.rank < floor.rank:
+        if floor is not None and tier < floor:
             return floor, f"{rationale}; raised to min_tier={floor.value}"
         return tier, rationale

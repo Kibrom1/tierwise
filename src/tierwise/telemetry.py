@@ -47,6 +47,43 @@ class StderrSink:
         print(json.dumps(event, ensure_ascii=False), file=sys.stderr)
 
 
+class TelemetryLog:
+    """Keeps events in memory.
+
+    Handy in tests and for a single process that wants to route, report
+    outcomes and tune without touching disk. It is not a substitute for
+    JsonlSink in anything long-lived: the outer loop learns from history, and
+    history a process forgets on exit is not history.
+    """
+
+    def __init__(self, events: list[dict[str, Any]] | None = None) -> None:
+        self.events: list[dict[str, Any]] = list(events or [])
+
+    def emit(self, event: dict[str, Any]) -> None:
+        self.events.append(event)
+
+    def __iter__(self):
+        return iter(self.events)
+
+    def __len__(self) -> int:
+        return len(self.events)
+
+    def of_kind(self, kind: str) -> list[dict[str, Any]]:
+        return [e for e in self.events if e.get("event") == kind]
+
+    def dump(self) -> str:
+        """Serialize to JSONL -- the same shape JsonlSink writes."""
+        return "\n".join(json.dumps(e, ensure_ascii=False) for e in self.events)
+
+    def write(self, path: str | Path) -> Path:
+        """Flush to disk, so an in-memory run can still feed a later tuning."""
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        body = self.dump()
+        target.write_text(body + ("\n" if body else ""), encoding="utf-8")
+        return target
+
+
 def build_event(decision: "RoutingDecision", elapsed_ms: float) -> dict[str, Any]:
     event = decision.to_dict()
     event["event"] = "routing_decision"

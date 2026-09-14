@@ -88,7 +88,7 @@ class RoutingSession:
             "tier_history": [t.value for t in tiers],
             "escalations": len(escalations),
             "de_escalations": sum(
-                1 for a, b in zip(tiers, tiers[1:]) if b.rank < a.rank
+                1 for a, b in zip(tiers, tiers[1:]) if b < a
             ),
             "tier_counts": {
                 tier.value: sum(1 for t in tiers if t is tier) for tier in Tier

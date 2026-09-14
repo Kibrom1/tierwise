@@ -9,7 +9,14 @@ from typing import Any, Optional
 
 
 class Tier(str, enum.Enum):
-    """Complexity tiers, ordered low -> high."""
+    """Complexity tiers, ordered low -> high.
+
+    The values stay strings so a decision log reads as ``"tier": "high"`` --
+    the tuner parses logs written by earlier runs, and people read them too.
+    Ordering and arithmetic are defined over ``rank`` instead, which also
+    removes a trap: inheriting str comparison would make ``Tier.MEDIUM <
+    Tier.HIGH`` false, since "medium" sorts after "high".
+    """
 
     LOW = "low"
     MEDIUM = "medium"
@@ -25,7 +32,44 @@ class Tier(str, enum.Enum):
         return _TIER_ORDER[rank]
 
     def bumped(self, steps: int = 1) -> "Tier":
+        """Move `steps` tiers, clamped at both ends."""
         return Tier.from_rank(self.rank + steps)
+
+    # -- ordering, by rank rather than by string --------------------------
+
+    def __lt__(self, other: object) -> bool:
+        if isinstance(other, Tier):
+            return self.rank < other.rank
+        return NotImplemented
+
+    def __le__(self, other: object) -> bool:
+        if isinstance(other, Tier):
+            return self.rank <= other.rank
+        return NotImplemented
+
+    def __gt__(self, other: object) -> bool:
+        if isinstance(other, Tier):
+            return self.rank > other.rank
+        return NotImplemented
+
+    def __ge__(self, other: object) -> bool:
+        if isinstance(other, Tier):
+            return self.rank >= other.rank
+        return NotImplemented
+
+    # -- arithmetic, clamped ----------------------------------------------
+
+    def __add__(self, steps: object) -> "Tier":  # type: ignore[override]
+        if isinstance(steps, int) and not isinstance(steps, bool):
+            return self.bumped(steps)
+        return NotImplemented
+
+    def __sub__(self, steps: object) -> "Tier":
+        if isinstance(steps, int) and not isinstance(steps, bool):
+            return self.bumped(-steps)
+        return NotImplemented
+
+    __radd__ = __add__
 
 
 _TIER_ORDER: list[Tier] = [Tier.LOW, Tier.MEDIUM, Tier.HIGH]

@@ -20,10 +20,28 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, Union
 
-from .telemetry import TelemetrySink, build_tuning_event, read_events
+from .telemetry import TelemetryLog, TelemetrySink, build_tuning_event, read_events
 from .thresholds import Thresholds
+
+#: A decision log: a path to JSONL, an in-memory TelemetryLog, or any iterable
+#: of event dicts.
+EventSource = Union[str, Path, TelemetryLog, Iterable[dict]]
+
+
+def _events_from(source: "EventSource") -> Iterable[dict[str, Any]]:
+    if isinstance(source, (str, Path)):
+        return read_events(source)
+    if isinstance(source, TelemetryLog):
+        return list(source.events)
+    return list(source)
+
+
+def _describe(source: "EventSource") -> str:
+    if isinstance(source, (str, Path)):
+        return str(source)
+    return type(source).__name__
 
 #: Outcomes that mean the tier was too low. ERROR is excluded deliberately: a
 #: failed API call is an infrastructure problem and says nothing about tier.
@@ -120,15 +138,19 @@ class ThresholdTuner:
 
     def tune(
         self,
-        log_path: str | Path,
+        log: "EventSource",
         thresholds: Optional[Thresholds] = None,
         apply: bool = True,
         thresholds_path: str | Path | None = None,
         telemetry: Optional[TelemetrySink] = None,
     ) -> TuningResult:
-        """Read the log, decide, and (by default) persist the new thresholds."""
+        """Read the log, decide, and (by default) persist the new thresholds.
+
+        ``log`` is a path to a JSONL decision log, a TelemetryLog, or any
+        iterable of event dicts.
+        """
         current = thresholds if thresholds is not None else Thresholds.load(thresholds_path)
-        scored = self.collect(read_events(log_path))
+        scored = self.collect(_events_from(log))
 
         per_tier: dict[str, dict[str, int]] = {}
         for row in scored:
@@ -211,7 +233,7 @@ class ThresholdTuner:
         )
 
         if apply:
-            proposed.save(thresholds_path, tuned_from=str(log_path))
+            proposed.save(thresholds_path, tuned_from=_describe(log))
             result.after = self._snapshot(proposed)
             if telemetry is not None:
                 telemetry.emit(build_tuning_event(result.to_dict()))

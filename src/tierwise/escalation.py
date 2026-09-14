@@ -53,7 +53,7 @@ class EscalationPolicy:
         if not self.should_escalate(decision, outcome):
             return None
 
-        next_tier = decision.tier.bumped(self.steps)
+        next_tier = decision.tier + self.steps
         return RoutingDecision(
             tier=next_tier,
             model=model_for_tier(next_tier),

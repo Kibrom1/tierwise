@@ -240,6 +240,30 @@ on a boundary by construction, so rather than inventing a verdict the stub
 resolves upward to the safer tier and reports confidence 0.5 — visible in
 telemetry instead of silently masquerading as a real classification.
 
+The live path splits prompt/parsing from transport. `LLMClassifier` owns the
+first; a `call_fn` — a plain `str -> str` callable — owns the second. Testing it
+takes a three-line fake instead of a mocked SDK, and a new provider is a new
+factory rather than a new classifier:
+
+```python
+from tierwise import LLMClassifier, Router, make_anthropic_call_fn
+
+# in a test
+router = Router(classifier=LLMClassifier(
+    call_fn=lambda prompt: '{"tier": "high", "confidence": 0.9}'
+))
+
+# in production
+router = Router(classifier=LLMClassifier(
+    call_fn=make_anthropic_call_fn(model="claude-haiku-4-5")
+))
+```
+
+Any failure — transport, missing SDK, unparseable response — degrades to the
+fallback classifier rather than propagating. `AnthropicClassifier` builds its
+`call_fn` on first use, so constructing one without the SDK installed is not an
+error either.
+
 To use live classification:
 
 ```bash
@@ -286,16 +310,31 @@ router = Router(telemetry=JsonlSink("routing.jsonl"))
  "signals": {...}, "event": "routing_decision", "timestamp": 1773450000.0, "elapsed_ms": 0.07}
 ```
 
-`NullSink` (default, writes nothing), `JsonlSink`, and `StderrSink` ship in the
-box.
+`NullSink` (default, writes nothing), `JsonlSink`, `StderrSink`, and
+`TelemetryLog` (in memory) ship in the box. The tuner accepts any of them:
+
+```python
+log = TelemetryLog()
+session = RoutingSession(router=Router(telemetry=log))
+...
+ThresholdTuner().tune(log)          # a log object
+ThresholdTuner().tune("loop.jsonl") # a path
+ThresholdTuner().tune(events)       # any iterable of event dicts
+```
+
+`TelemetryLog` is for tests and single-process runs. It is not a substitute for
+`JsonlSink` in anything long-lived — the outer loop learns from history, and
+history a process forgets on exit is not history.
 
 ## Layout
 
 ```
 src/tierwise/
-  models.py          Tier, TaskSignals, Classification, RoutingDecision
+  models.py          Tier (ordered, with clamped +/-), TaskSignals,
+                     Classification, RoutingDecision
   heuristics.py      complexity scoring, tier boundaries, confidence
-  llm_classifier.py  Classifier protocol, StubClassifier, AnthropicClassifier
+  llm_classifier.py  Classifier protocol, StubClassifier, LLMClassifier,
+                     make_anthropic_call_fn
   mapping.py         tier -> model, env-overridable
   escalation.py      outcomes and the bump-one-tier policy
   telemetry.py       decision events and sinks
@@ -304,7 +343,7 @@ src/tierwise/
   thresholds.py      the tunable cuts, and where they persist
   tuner.py           ThresholdTuner — the outer loop
   cli.py             route / explain / models / thresholds / tune
-tests/               87 tests, no network
+tests/               108 tests, no network
 ```
 
 ## Development

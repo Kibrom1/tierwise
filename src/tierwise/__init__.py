@@ -11,25 +11,42 @@ Two loops:
 
 from .escalation import EscalationPolicy, Outcome
 from .heuristics import classify as heuristic_classify, score_task
-from .llm_classifier import AnthropicClassifier, Classifier, StubClassifier, default_classifier
+from .llm_classifier import (
+    AnthropicClassifier,
+    CallFn,
+    Classifier,
+    LLMClassifier,
+    StubClassifier,
+    default_classifier,
+    make_anthropic_call_fn,
+)
 from .mapping import DEFAULT_MODELS, ModelMap
 from .models import Classification, RoutingDecision, Source, TaskSignals, Tier
 from .router import Router, RouterConfig
 from .session import RoutingSession
-from .telemetry import JsonlSink, NullSink, StderrSink, TelemetrySink, read_events
+from .telemetry import (
+    JsonlSink,
+    NullSink,
+    StderrSink,
+    TelemetryLog,
+    TelemetrySink,
+    read_events,
+)
 from .thresholds import DEFAULT_THRESHOLDS, Thresholds
 from .tuner import ThresholdTuner, TuningResult
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "AnthropicClassifier",
+    "CallFn",
     "Classification",
     "Classifier",
     "DEFAULT_MODELS",
     "DEFAULT_THRESHOLDS",
     "EscalationPolicy",
     "JsonlSink",
+    "LLMClassifier",
     "ModelMap",
     "NullSink",
     "Outcome",
@@ -41,6 +58,7 @@ __all__ = [
     "StderrSink",
     "StubClassifier",
     "TaskSignals",
+    "TelemetryLog",
     "TelemetrySink",
     "ThresholdTuner",
     "Thresholds",
@@ -49,6 +67,7 @@ __all__ = [
     "__version__",
     "default_classifier",
     "heuristic_classify",
+    "make_anthropic_call_fn",
     "read_events",
     "score_task",
 ]
