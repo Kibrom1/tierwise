@@ -4,14 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<meta name="description" content="TierWise routes each step of a coding task to the cheapest model tier that can do it, and tunes its own thresholds from what happens next.">
-<style>
-  /* Reset equivalent to the one the Artifact host injects, so this standalone
-     copy renders identically when served from GitHub Pages. */
-  body { margin: 0; }
-  img { max-width: 100%; }
-  [hidden] { display: none !important; }
-</style>
+<meta name="description" content="TierWise routes each step of a coding task to the cheapest model tier that can do it, then tunes its own thresholds from what happens next. Python, any provider, no runtime dependencies.">
 <title>TierWise</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=Newsreader:opsz,wght@6..72,380;6..72,500&family=JetBrains+Mono:wght@400;500;700&display=swap">
 <style>
@@ -36,59 +29,42 @@
     --signal:     #B4452F;
     --signal-bg:  #F6E2DC;
 
-    --shadow:     0 1px 2px rgba(16, 22, 26, .06), 0 8px 24px -12px rgba(16, 22, 26, .18);
+    --shadow: 0 1px 2px rgba(16,22,26,.06), 0 8px 24px -12px rgba(16,22,26,.18);
 
     --display: "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
     --body: "Newsreader", Georgia, "Times New Roman", serif;
     --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
     --measure: 34rem;
-    --wide: 60rem;
+    --wide: 62rem;
   }
 
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       color-scheme: dark;
-      --paper:     #0E1417;
-      --surface:   #151C20;
-      --sunk:      #111819;
-      --ink:       #E6EBE6;
-      --ink-soft:  #A3B0AE;
-      --ink-faint: #778483;
-      --rule:      #263033;
-      --t-low:     #6FC4B6;
-      --t-med:     #67AFC9;
-      --t-high:    #A7BED2;
-      --t-low-bg:  #1B3330;
-      --t-med-bg:  #17303A;
-      --t-high-bg: #1F2C37;
-      --signal:    #E28775;
-      --signal-bg: #35201C;
-      --shadow:    0 1px 2px rgba(0,0,0,.4), 0 10px 30px -14px rgba(0,0,0,.7);
+      --paper: #0E1417; --surface: #151C20; --sunk: #111819;
+      --ink: #E6EBE6; --ink-soft: #A3B0AE; --ink-faint: #778483; --rule: #263033;
+      --t-low: #6FC4B6; --t-med: #67AFC9; --t-high: #A7BED2;
+      --t-low-bg: #1B3330; --t-med-bg: #17303A; --t-high-bg: #1F2C37;
+      --signal: #E28775; --signal-bg: #35201C;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px -14px rgba(0,0,0,.7);
     }
   }
 
   :root[data-theme="dark"] {
     color-scheme: dark;
-    --paper:     #0E1417;
-    --surface:   #151C20;
-    --sunk:      #111819;
-    --ink:       #E6EBE6;
-    --ink-soft:  #A3B0AE;
-    --ink-faint: #778483;
-    --rule:      #263033;
-    --t-low:     #6FC4B6;
-    --t-med:     #67AFC9;
-    --t-high:    #A7BED2;
-    --t-low-bg:  #1B3330;
-    --t-med-bg:  #17303A;
-    --t-high-bg: #1F2C37;
-    --signal:    #E28775;
-    --signal-bg: #35201C;
-    --shadow:    0 1px 2px rgba(0,0,0,.4), 0 10px 30px -14px rgba(0,0,0,.7);
+    --paper: #0E1417; --surface: #151C20; --sunk: #111819;
+    --ink: #E6EBE6; --ink-soft: #A3B0AE; --ink-faint: #778483; --rule: #263033;
+    --t-low: #6FC4B6; --t-med: #67AFC9; --t-high: #A7BED2;
+    --t-low-bg: #1B3330; --t-med-bg: #17303A; --t-high-bg: #1F2C37;
+    --signal: #E28775; --signal-bg: #35201C;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px -14px rgba(0,0,0,.7);
   }
 
   * { box-sizing: border-box; }
+  body { margin: 0; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
 
   body {
     background: var(--paper);
@@ -97,228 +73,273 @@
     font-size: 1.0625rem;
     line-height: 1.62;
     padding-inline: 20px;
-    padding-block: 0;
     -webkit-font-smoothing: antialiased;
   }
 
   .page { max-width: var(--wide); margin-inline: auto; }
-  .col  { max-width: var(--measure); }
+  .col { max-width: var(--measure); }
+  .stack { display: flex; flex-direction: column; gap: 18px; }
+  .stack-lg { display: flex; flex-direction: column; gap: 30px; }
 
-  h1, h2, h3 { font-family: var(--display); font-weight: 700; text-wrap: balance; margin: 0; line-height: 1.1; }
-  p { margin: 0; }
+  h1, h2, h3, h4 { font-family: var(--display); font-weight: 700; text-wrap: balance; margin: 0; line-height: 1.12; }
+  p, ul, ol { margin: 0; }
+  ul { padding-inline-start: 1.1rem; }
+  li + li { margin-block-start: 6px; }
 
   a { color: inherit; text-decoration-color: var(--t-med); text-underline-offset: 3px; }
   a:hover { text-decoration-thickness: 2px; }
   :focus-visible { outline: 2px solid var(--t-med); outline-offset: 3px; border-radius: 2px; }
 
-  .eyebrow {
-    font-family: var(--mono);
-    font-size: .6875rem;
-    letter-spacing: .14em;
-    text-transform: uppercase;
-    color: var(--ink-faint);
-    font-weight: 500;
+  .skip {
+    position: absolute; inset-inline-start: -9999px; top: 0;
+    background: var(--ink); color: var(--paper); padding: 10px 14px;
+    font-family: var(--mono); font-size: .8125rem; z-index: 20;
   }
+  .skip:focus { inset-inline-start: 0; }
 
+  .eyebrow {
+    font-family: var(--mono); font-size: .6875rem; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--ink-faint); font-weight: 500;
+  }
   .num { font-variant-numeric: tabular-nums; }
+  .note { font-size: .9375rem; color: var(--ink-soft); }
 
-  /* ---------- masthead ---------- */
+  /* ---------- masthead + nav ---------- */
 
   header.masthead {
-    display: flex; flex-wrap: wrap; gap: 12px 24px;
-    align-items: baseline; justify-content: space-between;
-    padding-block: 28px 0;
+    display: flex; flex-wrap: wrap; gap: 10px 24px;
+    align-items: baseline; justify-content: space-between; padding-block: 26px 0;
   }
   .wordmark { font-family: var(--display); font-weight: 700; font-size: 1.25rem; letter-spacing: -.01em; }
   .wordmark .wise { color: var(--ink-faint); }
 
+  nav.sections {
+    position: sticky; top: 0; z-index: 10;
+    background: color-mix(in oklab, var(--paper) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border-block-end: 1px solid var(--rule);
+    margin-block-start: 22px;
+  }
+  nav.sections ol {
+    display: flex; gap: 4px; margin: 0; padding: 0; list-style: none;
+    overflow-x: auto; scrollbar-width: thin;
+  }
+  nav.sections a {
+    display: block; white-space: nowrap; text-decoration: none;
+    font-family: var(--mono); font-size: .75rem; color: var(--ink-soft);
+    padding: 11px 10px; border-block-end: 2px solid transparent;
+  }
+  nav.sections a:hover { color: var(--ink); }
+  nav.sections a[aria-current="true"] { color: var(--ink); border-block-end-color: var(--t-med); }
+
   /* ---------- hero ---------- */
 
-  .hero { padding-block: 40px 8px; display: flex; flex-direction: column; gap: 22px; }
-  .hero h1 { font-size: clamp(2.25rem, 7vw, 3.75rem); letter-spacing: -.02em; }
+  .hero { padding-block: 44px 8px; display: flex; flex-direction: column; gap: 22px; }
+  .hero h1 { font-size: clamp(2.25rem, 6.5vw, 3.5rem); letter-spacing: -.02em; }
   .lede { font-size: 1.1875rem; color: var(--ink-soft); max-width: 38rem; }
   .lede strong { color: var(--ink); font-weight: 500; }
 
-  /* ---------- the scale ---------- */
+  .cta-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .cta {
+    font-family: var(--mono); font-size: .8125rem; text-decoration: none;
+    padding: 9px 14px; border-radius: 2px; border: 1px solid var(--ink);
+    background: var(--ink); color: var(--paper);
+  }
+  .cta.ghost { background: none; color: var(--ink); border-color: var(--rule); }
+  .cta.ghost:hover { border-color: var(--ink); }
+
+  /* ---------- the scale panel ---------- */
 
   .scale-panel {
-    background: var(--surface);
-    border: 1px solid var(--rule);
-    border-radius: 3px;
-    box-shadow: var(--shadow);
-    padding: 26px 22px 22px;
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 3px;
+    box-shadow: var(--shadow); padding: 26px 22px 22px;
     display: flex; flex-direction: column; gap: 22px;
   }
-
   .scale-head { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: baseline; justify-content: space-between; }
 
   .ruler { position: relative; padding-block: 30px 34px; }
-
   .bands { display: flex; height: 30px; border-radius: 2px; overflow: hidden; }
-  .band { position: relative; }
-  .band.low  { background: var(--t-low-bg);  flex: 30; }
-  .band.med  { background: var(--t-med-bg);  flex: 40; }
-  .band.high { background: var(--t-high-bg); flex: 30; }
+  .band.low { background: var(--t-low-bg); flex: 30; position: relative; }
+  .band.med { background: var(--t-med-bg); flex: 40; position: relative; }
+  .band.high { background: var(--t-high-bg); flex: 30; position: relative; }
   .band span {
     position: absolute; inset-inline-start: 8px; top: 50%; translate: 0 -50%;
     font-family: var(--mono); font-size: .625rem; letter-spacing: .12em; text-transform: uppercase;
   }
-  .band.low  span { color: var(--t-low); }
-  .band.med  span { color: var(--t-med); }
+  .band.low span { color: var(--t-low); }
+  .band.med span { color: var(--t-med); }
   .band.high span { color: var(--t-high); }
 
   .cut { position: absolute; top: 22px; bottom: 20px; width: 1px; background: var(--ink); opacity: .55; }
   .cut::after {
-    content: attr(data-label);
-    position: absolute; bottom: -20px; inset-inline-start: 50%; translate: -50% 0;
+    content: attr(data-label); position: absolute; bottom: -20px;
+    inset-inline-start: 50%; translate: -50% 0;
     font-family: var(--mono); font-size: .625rem; color: var(--ink-soft); white-space: nowrap;
   }
   .trough {
     position: absolute; top: 30px; height: 30px;
-    background: repeating-linear-gradient(-45deg, transparent 0 3px, var(--ink) 3px 4px);
-    opacity: .22;
+    background: repeating-linear-gradient(-45deg, transparent 0 3px, var(--ink) 3px 4px); opacity: .22;
   }
-
   .dot {
-    position: absolute; top: 10px;
-    width: 11px; height: 11px; border-radius: 50%;
-    translate: -50% 0;
-    border: 2px solid var(--surface);
-    background: var(--ink-soft);
+    position: absolute; top: 10px; width: 11px; height: 11px; border-radius: 50%;
+    translate: -50% 0; border: 2px solid var(--surface); background: var(--ink-soft);
   }
-  .dot.is-low  { background: var(--t-low); }
-  .dot.is-med  { background: var(--t-med); }
+  .dot.is-low { background: var(--t-low); }
+  .dot.is-med { background: var(--t-med); }
   .dot.is-high { background: var(--t-high); }
-
   .marker {
-    position: absolute; top: 26px; bottom: 16px; width: 2px;
-    background: var(--signal);
-    translate: -1px 0;
-    transition: inset-inline-start .18s ease;
+    position: absolute; top: 26px; bottom: 16px; width: 2px; background: var(--signal);
+    translate: -1px 0; transition: inset-inline-start .18s ease;
   }
   .marker::before {
     content: ""; position: absolute; top: -7px; inset-inline-start: 50%; translate: -50% 0;
     border: 5px solid transparent; border-top-color: var(--signal);
   }
+  .axis { display: flex; justify-content: space-between; gap: 12px; font-family: var(--mono); font-size: .625rem; color: var(--ink-faint); }
 
-  .axis { display: flex; justify-content: space-between; font-family: var(--mono); font-size: .625rem; color: var(--ink-faint); }
-
-  /* ---------- the scorer ---------- */
-
-  .scorer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 15rem); gap: 24px; }
-  @media (max-width: 44rem) { .scorer { grid-template-columns: 1fr; } }
-
+  .scorer { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,15rem); gap: 24px; }
+  @media (max-width: 46rem) { .scorer { grid-template-columns: 1fr; } }
   .controls { display: flex; flex-direction: column; gap: 14px; }
   .field { display: grid; grid-template-columns: 9.5rem 1fr 3rem; gap: 10px; align-items: center; }
-  @media (max-width: 30rem) { .field { grid-template-columns: 1fr 2.5rem; } .field input[type="range"] { grid-column: 1 / -1; } }
+  @media (max-width: 30rem) {
+    .field { grid-template-columns: 1fr 2.5rem; }
+    .field input[type="range"], .field select { grid-column: 1 / -1; }
+  }
   .field label { font-family: var(--mono); font-size: .75rem; color: var(--ink-soft); }
-  .field output { font-family: var(--mono); font-size: .75rem; text-align: end; color: var(--ink); }
+  .field output { font-family: var(--mono); font-size: .75rem; text-align: end; }
   input[type="range"] { accent-color: var(--t-med); width: 100%; }
   .checks { display: flex; flex-wrap: wrap; gap: 8px 18px; }
   .checks label { font-family: var(--mono); font-size: .75rem; color: var(--ink-soft); display: flex; gap: 7px; align-items: center; }
   input[type="checkbox"] { accent-color: var(--t-med); }
   select {
-    font-family: var(--mono); font-size: .75rem; padding: 4px 6px;
-    background: var(--sunk); color: var(--ink);
-    border: 1px solid var(--rule); border-radius: 2px; width: 100%;
+    font-family: var(--mono); font-size: .75rem; padding: 4px 6px; width: 100%;
+    background: var(--sunk); color: var(--ink); border: 1px solid var(--rule); border-radius: 2px;
   }
-
   .verdict {
     background: var(--sunk); border: 1px solid var(--rule); border-radius: 2px;
-    padding: 16px; display: flex; flex-direction: column; gap: 10px;
-    align-self: start;
+    padding: 16px; display: flex; flex-direction: column; gap: 10px; align-self: start;
   }
   .verdict-tier { font-family: var(--display); font-size: 1.75rem; line-height: 1; letter-spacing: -.01em; }
-  .verdict-tier.is-low  { color: var(--t-low); }
-  .verdict-tier.is-med  { color: var(--t-med); }
+  .verdict-tier.is-low { color: var(--t-low); }
+  .verdict-tier.is-med { color: var(--t-med); }
   .verdict-tier.is-high { color: var(--t-high); }
-  .kv { display: flex; justify-content: space-between; gap: 12px; font-family: var(--mono); font-size: .75rem; }
+  .kv { display: flex; justify-content: space-between; gap: 12px; font-family: var(--mono); font-size: .75rem; margin: 0; }
   .kv dt { color: var(--ink-faint); }
-  .kv dd { margin: 0; color: var(--ink); }
-  .path {
-    font-family: var(--mono); font-size: .6875rem; line-height: 1.5;
-    padding: 8px 10px; border-radius: 2px;
-    background: var(--t-med-bg); color: var(--t-med);
-  }
+  .kv dd { margin: 0; }
+  .path { font-family: var(--mono); font-size: .6875rem; line-height: 1.5; padding: 8px 10px; border-radius: 2px; background: var(--t-med-bg); color: var(--t-med); }
   .path.is-fallback { background: var(--signal-bg); color: var(--signal); }
-
   .presets { display: flex; flex-wrap: wrap; gap: 6px; }
   .preset {
-    font-family: var(--mono); font-size: .6875rem;
-    background: none; color: var(--ink-soft);
-    border: 1px solid var(--rule); border-radius: 2px;
-    padding: 4px 8px; cursor: pointer;
+    font-family: var(--mono); font-size: .6875rem; background: none; color: var(--ink-soft);
+    border: 1px solid var(--rule); border-radius: 2px; padding: 4px 8px; cursor: pointer;
   }
   .preset:hover { border-color: var(--t-med); color: var(--ink); }
   .preset[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 
   /* ---------- sections ---------- */
 
-  section { padding-block: 56px; border-top: 1px solid var(--rule); }
-  section:first-of-type { border-top: 0; }
+  section { padding-block: 58px; border-block-start: 1px solid var(--rule); scroll-margin-top: 56px; }
   .sec-head { display: flex; flex-direction: column; gap: 10px; margin-block-end: 26px; }
   .sec-head h2 { font-size: clamp(1.5rem, 4vw, 2rem); letter-spacing: -.015em; }
-  .stack { display: flex; flex-direction: column; gap: 18px; }
+  h3 { font-size: 1.125rem; letter-spacing: -.01em; }
 
   pre {
     margin: 0; padding: 14px 16px; overflow-x: auto;
     background: var(--sunk); border: 1px solid var(--rule); border-radius: 2px;
     font-family: var(--mono); font-size: .8125rem; line-height: 1.65;
-    color: var(--ink);
   }
   pre .c { color: var(--ink-faint); }
   pre .k { color: var(--t-med); }
   pre .s { color: var(--t-low); }
   code { font-family: var(--mono); font-size: .875em; }
 
-  table { border-collapse: collapse; width: 100%; font-size: .9375rem; }
   .table-wrap { overflow-x: auto; }
-  th, td { text-align: start; padding: 8px 14px 8px 0; border-bottom: 1px solid var(--rule); }
+  table { border-collapse: collapse; width: 100%; font-size: .9375rem; }
+  th, td { text-align: start; padding: 8px 14px 8px 0; border-block-end: 1px solid var(--rule); vertical-align: top; }
   th { font-family: var(--mono); font-size: .6875rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); font-weight: 500; }
-  td.w { font-family: var(--mono); font-size: .8125rem; white-space: nowrap; }
+  td.w, td code { font-family: var(--mono); font-size: .8125rem; }
+  td.w { white-space: nowrap; }
 
-  /* ---------- loop strip ---------- */
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 22px; }
+
+  .panel { border: 1px solid var(--rule); border-radius: 3px; padding: 18px; background: var(--surface); display: flex; flex-direction: column; gap: 10px; }
+  .panel h3 { font-size: 1rem; }
+  .panel p { font-size: .9375rem; color: var(--ink-soft); }
 
   .steps { display: flex; flex-wrap: wrap; gap: 6px; }
   .step {
-    font-family: var(--mono); font-size: .6875rem;
-    padding: 6px 9px; border-radius: 2px; border: 1px solid transparent;
+    font-family: var(--mono); font-size: .6875rem; padding: 6px 9px; border-radius: 2px;
     display: flex; flex-direction: column; gap: 2px; min-width: 5.5rem;
   }
   .step b { font-weight: 500; font-size: .8125rem; }
-  .step.low  { background: var(--t-low-bg);  color: var(--t-low); }
-  .step.med  { background: var(--t-med-bg);  color: var(--t-med); }
+  .step.low { background: var(--t-low-bg); color: var(--t-low); }
+  .step.med { background: var(--t-med-bg); color: var(--t-med); }
   .step.high { background: var(--t-high-bg); color: var(--t-high); }
   .step.fail { background: var(--signal-bg); color: var(--signal); }
   .step small { opacity: .8; }
 
-  .note { font-size: .9375rem; color: var(--ink-soft); }
+  .pill { font-family: var(--mono); font-size: .6875rem; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
+  .pill.auto { background: var(--t-med-bg); color: var(--t-med); }
+  .pill.you { background: var(--signal-bg); color: var(--signal); }
+
+  details {
+    border-block-end: 1px solid var(--rule); padding-block: 4px;
+  }
+  details > summary {
+    cursor: pointer; list-style: none; padding-block: 12px;
+    font-family: var(--display); font-weight: 500; font-size: 1.0625rem;
+    display: flex; gap: 12px; align-items: baseline;
+  }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before {
+    content: "+"; font-family: var(--mono); color: var(--t-med); font-size: .875rem;
+  }
+  details[open] > summary::before { content: "\2212"; }
+  details .answer { padding: 0 0 14px 26px; display: flex; flex-direction: column; gap: 12px; font-size: .9375rem; color: var(--ink-soft); }
+  details .answer strong { color: var(--ink); font-weight: 500; }
 
   .limits { display: grid; gap: 2px; }
-  .limit { display: grid; grid-template-columns: 1.5rem 1fr; gap: 10px; padding-block: 10px; border-bottom: 1px solid var(--rule); }
-  .limit:last-child { border-bottom: 0; }
+  .limit { display: grid; grid-template-columns: 1.5rem 1fr; gap: 10px; padding-block: 10px; border-block-end: 1px solid var(--rule); }
+  .limit:last-child { border-block-end: 0; }
   .limit .mark { font-family: var(--mono); font-size: .8125rem; color: var(--signal); }
   .limit p { font-size: .9375rem; }
   .limit b { font-weight: 500; }
 
   footer {
-    border-top: 1px solid var(--rule); padding-block: 32px 48px;
+    border-block-start: 1px solid var(--rule); padding-block: 32px 48px;
     display: flex; flex-wrap: wrap; gap: 10px 26px; justify-content: space-between;
     font-family: var(--mono); font-size: .75rem; color: var(--ink-faint);
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    * { transition: none !important; animation: none !important; }
-  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+  @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
+
 <div class="page">
 
   <header class="masthead">
     <div class="wordmark">Tier<span class="wise">Wise</span></div>
-    <div class="eyebrow">Python 3.10+ &middot; no runtime dependencies &middot; 174 tests</div>
+    <div class="eyebrow">Python 3.10+ &middot; no runtime dependencies &middot; 174 tests &middot; MIT</div>
   </header>
+
+  <nav class="sections" aria-label="Sections">
+    <ol>
+      <li><a href="#why">Why</a></li>
+      <li><a href="#scoring">Scoring</a></li>
+      <li><a href="#loops">The two loops</a></li>
+      <li><a href="#control">Control</a></li>
+      <li><a href="#providers">Providers</a></li>
+      <li><a href="#start">Get started</a></li>
+      <li><a href="#reference">Reference</a></li>
+      <li><a href="#faq">FAQ</a></li>
+      <li><a href="#limits">Limits</a></li>
+    </ol>
+  </nav>
+
+  <main id="main">
 
   <div class="hero">
     <h1>Every step pays for the hardest step in the task.</h1>
@@ -328,6 +349,10 @@
       that can do it. <strong>One score, two cuts, three tiers.</strong> Drag the signals and watch
       where a task lands.
     </p>
+    <div class="cta-row">
+      <a class="cta" href="#start">Get started</a>
+      <a class="cta ghost" href="https://github.com/Kibrom1/tierwise">Source on GitHub</a>
+    </div>
 
     <div class="scale-panel">
       <div class="scale-head">
@@ -347,8 +372,11 @@
         <div class="cut" style="left: 70%;" data-label="0.70"></div>
         <div class="marker" id="marker" style="left: 0%;"></div>
       </div>
-
-      <div class="axis"><span class="num">0.00</span><span>hatching = low confidence, sent to the classifier</span><span class="num">1.00</span></div>
+      <div class="axis">
+        <span class="num">0.00</span>
+        <span>hatching = low confidence, sent to the classifier</span>
+        <span class="num">1.00</span>
+      </div>
 
       <div class="presets" id="presets"></div>
 
@@ -357,27 +385,27 @@
           <div class="field">
             <label for="f-cat">category</label>
             <select id="f-cat"></select>
-            <output id="o-cat"></output>
+            <output id="o-cat" for="f-cat"></output>
           </div>
           <div class="field">
             <label for="f-files">files touched</label>
             <input type="range" id="f-files" min="1" max="40" step="1" value="1">
-            <output class="num" id="o-files">1</output>
+            <output class="num" id="o-files" for="f-files">1</output>
           </div>
           <div class="field">
             <label for="f-lines">lines changed</label>
             <input type="range" id="f-lines" min="0" max="2000" step="10" value="0">
-            <output class="num" id="o-lines">0</output>
+            <output class="num" id="o-lines" for="f-lines">0</output>
           </div>
           <div class="field">
             <label for="f-depth">dependency depth</label>
             <input type="range" id="f-depth" min="0" max="8" step="1" value="0">
-            <output class="num" id="o-depth">0</output>
+            <output class="num" id="o-depth" for="f-depth">0</output>
           </div>
           <div class="field">
             <label for="f-amb">ambiguity</label>
             <input type="range" id="f-amb" min="0" max="1" step="0.05" value="0">
-            <output class="num" id="o-amb">0.00</output>
+            <output class="num" id="o-amb" for="f-amb">0.00</output>
           </div>
           <div class="checks">
             <label><input type="checkbox" id="f-ctx"> needs existing context</label>
@@ -389,132 +417,589 @@
           <div class="verdict-tier is-low" id="v-tier">low</div>
           <dl class="kv"><dt>score</dt><dd class="num" id="v-score">0.000</dd></dl>
           <dl class="kv"><dt>confidence</dt><dd class="num" id="v-conf">1.00</dd></dl>
-          <dl class="kv"><dt>model</dt><dd id="v-model">from tierwise.toml</dd></dl>
+          <dl class="kv"><dt>model</dt><dd id="v-model">[models].low</dd></dl>
           <p class="path" id="v-path">heuristic decided it &mdash; no classifier call</p>
         </div>
       </div>
     </div>
   </div>
 
-  <section>
+  <!-- ---------------------------------------------------------------- -->
+
+  <section id="why">
     <div class="sec-head col">
-      <span class="eyebrow">first decision</span>
-      <h2>Three lines, then your existing call.</h2>
+      <span class="eyebrow">the problem</span>
+      <h2>One tier per task is the same mistake, one level down.</h2>
     </div>
-    <div class="stack col">
-      <pre><span class="c"># not on PyPI yet</span>
-pip install -e /path/to/tierwise</pre>
-      <pre><span class="k">from</span> tierwise <span class="k">import</span> Router, TaskSignals
-
-router = Router()
-decision = router.route(TaskSignals(category=<span class="s">"bugfix"</span>, file_count=<span class="num">4</span>, lines_changed=<span class="num">150</span>))
-
-client.messages.create(model=decision.model, ...)  <span class="c"># unchanged</span></pre>
-      <p class="note">
-        <code>decision.model</code> is a plain string. TierWise never makes the call &mdash; which is
-        why any provider works. Model names live in a <code>tierwise.toml</code> you commit, so CI,
-        the tuning cron and every developer resolve the same ones:
+    <div class="stack-lg">
+      <p class="col">
+        An agent working a ticket takes many steps, and they are not equally hard. Reading a failing
+        test, tracing a bug across six modules, and updating a changelog line are not the same job
+        &mdash; but a fixed model choice charges all three at the price of the worst one. Picking one
+        tier per <em>task</em> instead of per <em>call</em> just moves the waste rather than removing it.
       </p>
-      <pre>$ tierwise models
+
+      <div class="grid2">
+        <div class="panel">
+          <h3>Fixed on the big model</h3>
+          <p>Nothing ever fails for being under-powered. You pay top rate for changelog edits, and
+          nothing in your logs ever tells you that you did.</p>
+        </div>
+        <div class="panel">
+          <h3>Fixed on the small model</h3>
+          <p>Cheap until the step that needs more, then silently wrong output, a retry you noticed
+          late, or a human cleaning up. The failure is the expensive part.</p>
+        </div>
+        <div class="panel">
+          <h3>Per-step routing</h3>
+          <p>Each step priced on what it involves, with a way back up when the cheap tier turns out
+          to be wrong &mdash; and a record of every time that happened.</p>
+        </div>
+      </div>
+
+      <div class="stack col">
+        <h3>What that came to on a real run</h3>
+        <p class="note">
+          The bundled example, five steps, one escalation. Per-step prices are illustrative
+          placeholders &mdash; substitute your own; the point is the shape, not the figures.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>strategy</th><th>spend</th><th>what happened</th></tr></thead>
+            <tbody>
+              <tr><td>Every step at the top tier</td><td class="w num">$0.470</td><td>no failures, no evidence</td></tr>
+              <tr><td>Per-step routing</td><td class="w num">$0.234</td><td>one step escalated and passed on retry</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">
+          Half the spend, and — more useful long-term — a log of which steps needed what.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------------- -->
+
+  <section id="scoring">
+    <div class="sec-head col">
+      <span class="eyebrow">how a decision is made</span>
+      <h2>Category is a weak signal. Context is not.</h2>
+    </div>
+    <div class="stack-lg">
+      <p class="col">
+        &ldquo;Write a unit test&rdquo; is fifteen lines or a six-hour slog through mocked
+        dependencies. What predicts difficulty is everything around the label, so category only
+        breaks ties &mdash; it never drives the decision.
+      </p>
+
+      <div class="stack col">
+        <h3>Precedence</h3>
+        <ol>
+          <li><strong>An engineer's tier hint</strong> is trusted outright and skips inference. People
+            usually know when a task is hairy, and that signal is cheaper and more accurate than
+            anything inferred.</li>
+          <li><strong>The heuristic scorer</strong>, when its confidence clears the threshold. No
+            network call, sub-millisecond.</li>
+          <li><strong>An LLM classifier</strong>, for the ambiguous middle only &mdash; scores sitting
+            near a cut, where the heuristic genuinely cannot tell.</li>
+        </ol>
+        <p class="note">A <code>min_tier</code> floor is applied last, so a task can be pinned above
+        whatever the classifiers concluded.</p>
+      </div>
+
+      <div class="stack col">
+        <h3>The signals</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>signal</th><th>contribution</th></tr></thead>
+            <tbody>
+              <tr><td>files touched</td><td class="w">1 / 2&ndash;3 / 4&ndash;10 / &gt;10 &rarr; 0, 1, 2, 3</td></tr>
+              <tr><td>lines changed</td><td class="w">&lt;20 / &lt;100 / &lt;400 / &ge;400 &rarr; 0, 1, 2, 3</td></tr>
+              <tr><td>dependency depth</td><td class="w">0 / 1&ndash;2 / &gt;2 &rarr; 0, 1, 2</td></tr>
+              <tr><td>needs existing context</td><td class="w">+1.5</td></tr>
+              <tr><td>ambiguity (0&ndash;1)</td><td class="w">&times;3.0 &mdash; the heaviest</td></tr>
+              <tr><td>greenfield</td><td class="w">&minus;0.5</td></tr>
+              <tr><td>category</td><td class="w">&minus;0.10 (typo) &hellip; +0.22 (debug prod)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">
+          The raw sum is normalised to 0&ndash;1 and cut at 0.30 and 0.70. Every constant here is a
+          starting value, not a law &mdash; the loop below moves them.
+        </p>
+      </div>
+
+      <div class="stack col">
+        <h3>Why confidence is continuous</h3>
+        <p>
+          Confidence is the distance from the nearest cut. A score sitting on a cut has confidence 0
+          &mdash; exactly the task worth spending a cheap classifier call on. Everything else resolves
+          for free.
+        </p>
+        <p>
+          It matters that this is a smooth number rather than a handful of buckets. If confidence
+          could only take four values, moving a threshold slightly would either change nothing or
+          change everything, and a tuner that can only overshoot is worse than none. The continuity
+          is what makes the outer loop possible at all.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------------- -->
+
+  <section id="loops">
+    <div class="sec-head col">
+      <span class="eyebrow">the two loops</span>
+      <h2>It routes per step, and it learns from what happened.</h2>
+    </div>
+    <div class="stack-lg">
+
+      <div class="stack">
+        <h3>Inner loop &mdash; the tier climbs for one hard step, then drops back</h3>
+        <p class="col">
+          Each step is routed on its own. A step that comes back wrong escalates without restarting
+          the task, and the next step starts fresh rather than inheriting the higher tier. A real run
+          of the bundled example:
+        </p>
+        <div class="steps">
+          <div class="step low"><small>step 0</small><b>low</b><small>read the failing test</small></div>
+          <div class="step high"><small>step 1</small><b>high</b><small>trace across modules</small></div>
+          <div class="step fail"><small>step 2</small><b>medium</b><small>tests fail &rarr;</small></div>
+          <div class="step high"><small>step 2 retry</small><b>high</b><small>tests pass</small></div>
+          <div class="step med"><small>step 3</small><b>medium</b><small>package-wide rename</small></div>
+          <div class="step low"><small>step 4</small><b>low</b><small>changelog entry</small></div>
+        </div>
+        <p class="note col">One escalation, three de-escalations.</p>
+      </div>
+
+      <div class="stack">
+        <h3>Outer loop &mdash; each cut moves on the failures of the tier it governs</h3>
+        <p class="col">
+          Outcomes you report go to a decision log. The tuner reads it, joins each decision to what
+          happened, and moves the thresholds those decisions came from &mdash; per boundary, never on
+          one aggregate rate:
+        </p>
+        <pre>$ tierwise tune routing.jsonl --rework-cost 0.05
+cost per successful step: $0.0167
+  low_medium   n=12  fail=0.00  expl=6/4   target=0.22 [cost-derived]  0.30 &rarr; 0.33  relaxed
+  medium_high  n=6   fail=0.67  expl=6/0   target=0.50 [cost-derived]  0.70 &rarr; 0.67  tightened</pre>
+        <p class="note col">
+          Two independent conclusions from one log, moving in opposite directions. All the failures
+          landing in <code>low</code> says nothing about the medium/high cut, and moving both would
+          push medium-tier work to the top tier on the strength of failures that happened elsewhere.
+        </p>
+      </div>
+
+      <div class="grid2">
+        <div class="panel">
+          <h3>Evidence is spent once</h3>
+          <p>A watermark records which outcomes have been acted on. Re-running over the same log
+          changes nothing and says so, which is what makes the tuner safe on a cron &mdash; otherwise
+          one bad week would be re-counted every night until routing hit the floor.</p>
+        </div>
+        <div class="panel">
+          <h3>Bounded on purpose</h3>
+          <p>Twenty outcomes per boundary before it moves, one 0.03 step per run, a hard floor and
+          ceiling, an enforced gap between cuts, and a logged event for every change.</p>
+        </div>
+        <div class="panel">
+          <h3>Errors are not tier failures</h3>
+          <p>A timeout or a rate limit is an infrastructure problem. It is recorded, it does not
+          escalate, and it never counts as evidence &mdash; a bigger model cannot fix a connection.</p>
+        </div>
+      </div>
+
+      <div class="stack col">
+        <h3>Failure is asymmetric, and that is the hard part</h3>
+        <p>
+          Under-provisioning shows up in outcome data. Over-provisioning never does: the top tier
+          does not fail work a cheap tier could have handled, so a step that succeeded at
+          <code>medium</code> looks identical whether or not <code>low</code> would have done.
+          No amount of ordinary logging finds it.
+        </p>
+        <p>
+          So a fraction of steps can be deliberately routed one tier <em>below</em> the
+          recommendation. <code>expl=6/4</code> above means six downgrades tried, four succeeded
+          &mdash; the only direct evidence that the cheap side has room. A downgrade that fails
+          escalates straight back up, which is what makes exploring affordable. It is off by default,
+          and never crosses an explicit hint or floor.
+        </p>
+        <pre><span class="k">from</span> tierwise <span class="k">import</span> Router, RouterConfig
+
+Router(config=RouterConfig(exploration_rate=<span class="num">0.05</span>))   <span class="c"># 5% of eligible steps</span></pre>
+      </div>
+
+      <div class="stack col">
+        <h3>What rate should it steer to?</h3>
+        <p>
+          The default target failure rate is a hand-picked 0.10. Tell it what a failure actually costs
+          you and each boundary derives its own instead &mdash; trying cheap first always costs the
+          cheap run, plus, when it fails, the expensive run anyway and whatever the failure itself
+          cost:
+        </p>
+        <pre>p* = (c_expensive &minus; c_cheap) / (c_expensive + rework)</pre>
+        <p class="note">
+          Tier costs are read from the log. Rework is the one term the log cannot supply, so without
+          it nothing is guessed and the fixed target applies. <code>cost_per_success</code> is
+          reported every run &mdash; tier is a proxy, that is the number the loop is really moving.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------------- -->
+
+  <section id="control">
+    <div class="sec-head col">
+      <span class="eyebrow">autonomy</span>
+      <h2>What it decides, and what stays yours.</h2>
+    </div>
+    <div class="stack-lg">
+      <p class="col">
+        It picks the tier by itself, but it never <em>acts</em> on that pick, and every automatic
+        decision is bounded by numbers you set.
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>decision</th><th>who</th><th>notes</th></tr></thead>
+          <tbody>
+            <tr><td>Which tier a step gets</td><td><span class="pill auto">automatic</span></td><td>heuristic, or the classifier near a cut</td></tr>
+            <tr><td>Escalating a failed step</td><td><span class="pill auto">automatic</span></td><td>capped at two attempts by default</td></tr>
+            <tr><td>Exploration downgrades</td><td><span class="pill auto">automatic</span></td><td>only if you switch them on</td></tr>
+            <tr><td>Threshold changes</td><td><span class="pill auto">automatic</span></td><td>applied when you run the tuner</td></tr>
+            <tr><td>The signals</td><td><span class="pill you">yours</span></td><td>nothing extracts them for you yet</td></tr>
+            <tr><td>The model call</td><td><span class="pill you">yours</span></td><td><code>decision.model</code> is a string</td></tr>
+            <tr><td>What counts as failure</td><td><span class="pill you">yours</span></td><td>no outcome label, no learning</td></tr>
+            <tr><td>Running the tuner</td><td><span class="pill you">yours</span></td><td>no scheduler ships with it</td></tr>
+            <tr><td>Model names and guardrails</td><td><span class="pill you">yours</span></td><td>config file and constructor arguments</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="grid2">
+        <div class="panel">
+          <h3>Two explicit overrides</h3>
+          <p><code>tier_hint</code> is trusted outright and skips inference. <code>min_tier</code> sets
+          a floor without pinning the tier. Exploration is forbidden from crossing either.</p>
+        </div>
+        <div class="panel">
+          <h3>Turning the drift off</h3>
+          <p>Auto-applied tuning is the one genuinely unsupervised part. Pass explicit thresholds and
+          the tuned file is ignored entirely; or tune with <code>--dry-run</code> and commit the
+          changes yourself.</p>
+        </div>
+      </div>
+
+      <pre class="col"><span class="k">from</span> tierwise <span class="k">import</span> Router, Thresholds
+
+Router(thresholds=Thresholds())   <span class="c"># pinned; never reads the tuned file</span></pre>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------------- -->
+
+  <section id="providers">
+    <div class="sec-head col">
+      <span class="eyebrow">portability</span>
+      <h2>Any provider. Nothing here knows who serves the models.</h2>
+    </div>
+    <div class="stack-lg">
+      <p class="col">
+        Scoring, sessions, escalation, telemetry, thresholds and the tuner contain no provider code
+        at all. Three small contracts are the whole integration surface, and the Anthropic helpers are
+        optional conveniences behind an extra &mdash; the base install has no runtime dependencies.
+      </p>
+
+      <div class="grid2">
+        <div class="panel">
+          <h3>1. Model names</h3>
+          <p>A plain <code>Tier &rarr; str</code> mapping. Nothing is parsed or validated; the string
+          comes back as <code>decision.model</code>.</p>
+        </div>
+        <div class="panel">
+          <h3>2. The classifier transport</h3>
+          <p>A <code>str &rarr; str</code> callable. Prompt in, JSON out. Any provider, a gateway, a
+          local model, or a cached lookup.</p>
+        </div>
+        <div class="panel">
+          <h3>3. The executor</h3>
+          <p>A function of the decision. The runner never inspects the result &mdash; your
+          <code>verify</code> and <code>cost_fn</code> interpret it.</p>
+        </div>
+      </div>
+
+      <pre class="col"><span class="k">from</span> tierwise <span class="k">import</span> LLMClassifier, ModelMap, Router, TaskRunner, Tier
+
+router = Router(
+    model_map=ModelMap({Tier.LOW: <span class="s">"gpt-5-mini"</span>,
+                        Tier.MEDIUM: <span class="s">"llama-4-70b"</span>,
+                        Tier.HIGH: <span class="s">"gemini-3-pro"</span>}),
+    classifier=LLMClassifier(call_fn=my_gateway_call),
+)
+runner = TaskRunner(executor=my_executor, verify=<span class="k">lambda</span> r: tests_pass(), router=router)</pre>
+
+      <p class="note col">
+        Model names belong in a <code>tierwise.toml</code> you commit, so CI, the tuning cron and every
+        developer resolve the same ones. <code>tierwise models</code> shows where each came from, and
+        marks anything unset as a guess rather than a choice:
+      </p>
+      <pre class="col">$ tierwise models
 low     gpt-5-mini                   [config]
 medium  llama-4-70b                  [config]
 high    claude-opus-4-5              [env]</pre>
     </div>
   </section>
 
-  <section>
+  <!-- ---------------------------------------------------------------- -->
+
+  <section id="start">
     <div class="sec-head col">
-      <span class="eyebrow">the score</span>
-      <h2>Category is a weak signal. Context is not.</h2>
+      <span class="eyebrow">get started</span>
+      <h2>Three lines, then your existing call.</h2>
     </div>
-    <div class="stack col">
-      <p>
-        &ldquo;Write a unit test&rdquo; is fifteen lines or a six-hour slog through mocked
-        dependencies. What predicts difficulty is everything around the label, so category only
-        breaks ties &mdash; it never drives the decision.
-      </p>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>signal</th><th>contribution</th></tr></thead>
-          <tbody>
-            <tr><td>files touched</td><td class="w">1 / 2&ndash;3 / 4&ndash;10 / &gt;10 &rarr; 0, 1, 2, 3</td></tr>
-            <tr><td>lines changed</td><td class="w">&lt;20 / &lt;100 / &lt;400 / &ge;400 &rarr; 0, 1, 2, 3</td></tr>
-            <tr><td>dependency depth</td><td class="w">0 / 1&ndash;2 / &gt;2 &rarr; 0, 1, 2</td></tr>
-            <tr><td>needs existing context</td><td class="w">+1.5</td></tr>
-            <tr><td>ambiguity (0&ndash;1)</td><td class="w">&times;3.0 &mdash; the heaviest</td></tr>
-            <tr><td>greenfield</td><td class="w">&minus;0.5</td></tr>
-            <tr><td>category</td><td class="w">&minus;0.10 (typo) &hellip; +0.22 (debug prod)</td></tr>
-          </tbody>
-        </table>
+    <div class="stack-lg">
+      <div class="stack col">
+        <pre><span class="c"># not on PyPI yet</span>
+pip install -e /path/to/tierwise
+pip install <span class="s">"tierwise @ git+https://github.com/Kibrom1/tierwise.git"</span></pre>
+        <pre><span class="k">from</span> tierwise <span class="k">import</span> Router, TaskSignals
+
+router = Router()
+decision = router.route(TaskSignals(category=<span class="s">"bugfix"</span>, file_count=<span class="num">4</span>, lines_changed=<span class="num">150</span>))
+
+client.messages.create(model=decision.model, ...)  <span class="c"># unchanged</span></pre>
+        <p class="note">
+          Two shortcuts that skip signal estimation entirely: <code>tier_hint=Tier.HIGH</code> when you
+          already know, and <code>min_tier=Tier.MEDIUM</code> to set a floor without pinning.
+        </p>
       </div>
-      <p class="note">
-        Confidence is the distance from the nearest cut, and it is continuous. A score sitting on a
-        cut has confidence 0 &mdash; which is exactly the task worth spending a cheap classifier call
-        on. Everything else resolves for free. If confidence could only take a handful of values, a
-        small threshold change would either do nothing or change everything, and the loop below could
-        not work at all.
-      </p>
-    </div>
-  </section>
 
-  <section>
-    <div class="sec-head col">
-      <span class="eyebrow">inner loop</span>
-      <h2>The tier climbs for one hard step, then drops back.</h2>
-    </div>
-    <div class="stack">
-      <p class="col">
-        A router that picks one tier per task recreates the problem one level down. Each step is
-        routed on its own; a step that comes back wrong escalates without restarting the task. This
-        is a real run of the bundled example:
-      </p>
-      <div class="steps">
-        <div class="step low"><small>step 0</small><b>low</b><small>read the failing test</small></div>
-        <div class="step high"><small>step 1</small><b>high</b><small>trace across modules</small></div>
-        <div class="step fail"><small>step 2</small><b>medium</b><small>tests fail &rarr;</small></div>
-        <div class="step high"><small>step 2 retry</small><b>high</b><small>tests pass</small></div>
-        <div class="step med"><small>step 3</small><b>medium</b><small>package-wide rename</small></div>
-        <div class="step low"><small>step 4</small><b>low</b><small>changelog entry</small></div>
+      <div class="stack col">
+        <h3>Letting it drive</h3>
+        <p>
+          <code>TaskRunner</code> does the plumbing &mdash; route, call, check, escalate, retry at the
+          new tier, record, stop at the cap &mdash; while the two judgements stay yours.
+        </p>
+        <pre><span class="k">from</span> tierwise <span class="k">import</span> TaskRunner, make_anthropic_executor
+
+runner = TaskRunner(
+    executor=make_anthropic_executor(),        <span class="c"># you own the call</span>
+    verify=<span class="k">lambda</span> response: tests_pass(),      <span class="c"># you own the standard</span>
+    cost_fn=<span class="k">lambda</span> response: price(response),
+)
+
+result = runner.run(TaskSignals(...))
+result.ok, result.tier, result.tiers, result.total_cost_usd</pre>
+        <p class="note">
+          The loop is exactly as good as <code>verify</code>. &ldquo;The response was non-empty&rdquo;
+          gives you a loop that escalates on noise and then teaches the tuner from it &mdash; point it
+          at your tests.
+        </p>
       </div>
-      <p class="note col">
-        One escalation, three de-escalations. Illustrative spend <span class="num">$0.234</span>
-        against <span class="num">$0.470</span> for sending every step to the top tier.
-      </p>
+
+      <div class="stack col">
+        <h3>Adopt it in stages</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>stage</th><th>you add</th><th>you get</th></tr></thead>
+            <tbody>
+              <tr><td class="w">1</td><td><code>Router.route()</code></td><td>per-task routing, today</td></tr>
+              <tr><td class="w">2</td><td><code>RoutingSession.route_step()</code></td><td>per-step routing inside an agent loop</td></tr>
+              <tr><td class="w">3</td><td><code>mark_outcome()</code></td><td>escalation when a step comes back wrong</td></tr>
+              <tr><td class="w">4</td><td><code>tierwise tune</code></td><td>thresholds that move with outcomes</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">
+          Don't skip to stage 4. The tuner is only as good as your definition of failure &mdash;
+          without a signal you trust, it trains on noise.
+        </p>
+      </div>
     </div>
   </section>
 
-  <section>
+  <!-- ---------------------------------------------------------------- -->
+
+  <section id="reference">
     <div class="sec-head col">
-      <span class="eyebrow">outer loop</span>
-      <h2>Each cut moves on the failures of the tier it governs.</h2>
+      <span class="eyebrow">reference</span>
+      <h2>The surface, in one place.</h2>
     </div>
-    <div class="stack">
-      <p class="col">
-        Outcomes you report go to a decision log. The tuner reads it, joins each decision to what
-        happened, and moves the thresholds those decisions came from &mdash; per boundary, never on
-        one aggregate rate:
-      </p>
-      <pre>$ tierwise tune routing.jsonl --rework-cost 0.05
-cost per successful step: $0.0167
-  low_medium   n=12  fail=0.00  expl=6/4   target=0.22 [cost-derived]  0.30 &rarr; 0.33  relaxed
-  medium_high  n=6   fail=0.67  expl=6/0   target=0.50 [cost-derived]  0.70 &rarr; 0.67  tightened</pre>
-      <p class="note col">
-        Two independent conclusions from one log, moving in opposite directions. Tuned values persist
-        and load in the next run, and a watermark means re-running over the same log changes nothing
-        &mdash; evidence is spent when it is acted on, not every time it is read.
-      </p>
-      <p class="col">
-        <strong>Failure is asymmetric, and that is the hard part.</strong> Under-provisioning shows up
-        in outcome data. Over-provisioning never does: the top tier does not fail work a cheap tier
-        could have handled. So a fraction of steps can be deliberately routed one tier
-        <em>below</em> the recommendation &mdash; <code>expl=6/4</code> above means six downgrades
-        tried, four succeeded. That is the only direct evidence that the cheap side has room. A
-        downgrade that fails escalates straight back up.
-      </p>
+    <div class="stack-lg">
+
+      <div class="stack">
+        <h3>Command line</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>command</th><th>does</th><th>useful flags</th></tr></thead>
+            <tbody>
+              <tr><td class="w">tierwise route</td><td>route a task, print the chosen model</td><td class="w">--json, --model-only, --hint, --min-tier, --telemetry</td></tr>
+              <tr><td class="w">tierwise explain</td><td>show the score breakdown by signal</td><td class="w">--json</td></tr>
+              <tr><td class="w">tierwise models</td><td>tier &rarr; model, and where each name came from</td><td class="w">--json</td></tr>
+              <tr><td class="w">tierwise thresholds</td><td>the cuts currently in force</td><td class="w">&mdash;</td></tr>
+              <tr><td class="w">tierwise tune</td><td>retune thresholds from a decision log</td><td class="w">--dry-run, --rework-cost, --min-samples, --window</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <pre>MODEL=$(tierwise route <span class="s">"add a filter param"</span> --category feature --files 3 --lines 90 --model-only)</pre>
+      </div>
+
+      <div class="stack">
+        <h3>Python API</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>group</th><th>names</th><th>what for</th></tr></thead>
+            <tbody>
+              <tr>
+                <td class="w">Routing</td>
+                <td><code>Router</code>, <code>RouterConfig</code>, <code>RoutingSession</code>, <code>RoutingDecision</code>, <code>TaskSignals</code>, <code>Tier</code>, <code>Source</code></td>
+                <td>score a step, get a tier and model; a session routes each step of one task</td>
+              </tr>
+              <tr>
+                <td class="w">Running</td>
+                <td><code>TaskRunner</code>, <code>StepResult</code>, <code>Attempt</code>, <code>make_anthropic_executor</code></td>
+                <td>run the loop around your executor and verifier</td>
+              </tr>
+              <tr>
+                <td class="w">Classifying</td>
+                <td><code>LLMClassifier</code>, <code>StubClassifier</code>, <code>AnthropicClassifier</code>, <code>make_anthropic_call_fn</code>, <code>score_task</code></td>
+                <td>the ambiguous-middle fallback, with the transport injected</td>
+              </tr>
+              <tr>
+                <td class="w">Outcomes</td>
+                <td><code>Outcome</code>, <code>EscalationPolicy</code></td>
+                <td>success / insufficient / rejected / error, and the bump policy</td>
+              </tr>
+              <tr>
+                <td class="w">Telemetry</td>
+                <td><code>JsonlSink</code>, <code>TelemetryLog</code>, <code>NullSink</code>, <code>StderrSink</code>, <code>read_events</code></td>
+                <td>one event per decision and per outcome; JSONL is what the tuner reads</td>
+              </tr>
+              <tr>
+                <td class="w">Tuning</td>
+                <td><code>ThresholdTuner</code>, <code>TuningResult</code>, <code>BoundaryAdjustment</code>, <code>Thresholds</code></td>
+                <td>move the cuts from observed outcomes, with provenance</td>
+              </tr>
+              <tr>
+                <td class="w">Config</td>
+                <td><code>ModelMap</code>, <code>find_config</code>, <code>load_config</code>, <code>ConfigError</code></td>
+                <td>resolve model names from file, environment and defaults</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="stack">
+        <h3>Environment</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>variable</th><th>default</th></tr></thead>
+            <tbody>
+              <tr><td class="w">TIERWISE_CONFIG</td><td>nearest <code>tierwise.toml</code> / <code>tierwise.json</code></td></tr>
+              <tr><td class="w">TIERWISE_MODEL_LOW / _MEDIUM / _HIGH</td><td>built-in, marked unverified</td></tr>
+              <tr><td class="w">TIERWISE_CLASSIFIER</td><td><code>stub</code> &mdash; no network, no key</td></tr>
+              <tr><td class="w">TIERWISE_CLASSIFIER_MODEL</td><td>a cheap-tier model</td></tr>
+              <tr><td class="w">TIERWISE_THRESHOLDS</td><td><code>~/.tierwise/thresholds.json</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </section>
 
-  <section>
+  <!-- ---------------------------------------------------------------- -->
+
+  <section id="faq">
+    <div class="sec-head col">
+      <span class="eyebrow">questions</span>
+      <h2>Things worth knowing before you wire it in.</h2>
+    </div>
+    <div class="col">
+      <details>
+        <summary>Does it call the model for me?</summary>
+        <div class="answer">
+          <p>Not by itself. <code>route()</code> returns a decision whose <code>.model</code> is a
+          string; your code makes the call. <strong>That is why any provider works</strong> &mdash;
+          owning the call would mean owning auth, retries, streaming, tool use and rate limits.</p>
+          <p><code>TaskRunner</code> will run the whole loop for you, but it calls an
+          <code>executor</code> you supply, so the same boundary holds.</p>
+        </div>
+      </details>
+      <details>
+        <summary>Does it work with providers other than Anthropic?</summary>
+        <div class="answer">
+          <p>Yes. Only three of eleven modules mention a provider at all, and the SDK is imported
+          lazily in two optional factory functions. The full loop &mdash; routing, escalation,
+          telemetry, tuning &mdash; runs with invented model names on a machine with no provider SDK
+          installed.</p>
+          <p>The built-in default names are Anthropic IDs, so set your own first; they are labelled
+          <code>default (unverified)</code> for exactly that reason.</p>
+        </div>
+      </details>
+      <details>
+        <summary>What if I have no reliable way to say whether a step succeeded?</summary>
+        <div class="answer">
+          <p>Then use stages 1&ndash;2 and stop there. Routing works without outcomes; escalation and
+          all learning do not. A weak verifier is worse than none once the loop is automatic &mdash;
+          it escalates on noise and then teaches the tuner from it.</p>
+        </div>
+      </details>
+      <details>
+        <summary>Will it change my routing behind my back?</summary>
+        <div class="answer">
+          <p>Only when you run the tuner, and only within guardrails: twenty outcomes per boundary,
+          one 0.03 step per run, a hard floor and ceiling, and a logged event for every change.
+          A watermark stops the same evidence being counted twice.</p>
+          <p>To remove the drift entirely, pass explicit <code>Thresholds</code> &mdash; the tuned file
+          is then ignored &mdash; or tune with <code>--dry-run</code> and commit the changes yourself.</p>
+        </div>
+      </details>
+      <details>
+        <summary>Where do the signals come from?</summary>
+        <div class="answer">
+          <p>You supply them. <code>file_count</code> and <code>lines_changed</code> come free from
+          <code>git diff --numstat</code> &mdash; a helper ships in the example.
+          <code>requires_context</code>, <code>ambiguity</code> and <code>dependency_depth</code> are
+          judgement calls your orchestrator makes.</p>
+          <p>When you already know the answer, say so: a <code>tier_hint</code> is trusted outright and
+          skips inference entirely.</p>
+        </div>
+      </details>
+      <details>
+        <summary>How often should I run the tuner?</summary>
+        <div class="answer">
+          <p>On a schedule against accumulated logs &mdash; nightly, or per sprint &mdash; not after
+          every task. It needs twenty outcomes <em>per boundary</em> before that boundary moves, and
+          re-running over an unchanged log does nothing.</p>
+        </div>
+      </details>
+      <details>
+        <summary>Does exploration make my agent worse?</summary>
+        <div class="answer">
+          <p>Slightly and deliberately, in exchange for the only evidence that over-provisioning
+          exists. A downgrade that fails escalates straight back up, so the cost of being wrong is one
+          extra call. It is off by default; 0.05 is a reasonable place to start.</p>
+          <p>It never explores against a <code>tier_hint</code> or below a <code>min_tier</code>
+          floor &mdash; those are people saying what a task needs.</p>
+        </div>
+      </details>
+      <details>
+        <summary>Is it on PyPI?</summary>
+        <div class="answer">
+          <p>Not yet. Install from a local checkout or straight from the Git URL. Python 3.10+, no
+          runtime dependencies; <code>anthropic</code> and <code>pytest</code> are extras.</p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------------- -->
+
+  <section id="limits">
     <div class="sec-head col">
       <span class="eyebrow">before you rely on it</span>
       <h2>What it does not do.</h2>
@@ -524,13 +1009,16 @@ cost per successful step: $0.0167
       <div class="limit"><span class="mark">02</span><p><b>It is only as good as your verifier.</b> &ldquo;The response was non-empty&rdquo; gives you a loop that escalates on noise and then teaches the tuner from it. Point it at your tests.</p></div>
       <div class="limit"><span class="mark">03</span><p><b>The built-in model names are guesses.</b> They are labelled <code>default (unverified)</code> for that reason. Set your own before the first call.</p></div>
       <div class="limit"><span class="mark">04</span><p><b>Three tiers is the model.</b> That maps onto most small/mid/large lineups. Five meaningful sizes, or routing across providers by price, would be collapsing something finer.</p></div>
-      <div class="limit"><span class="mark">05</span><p><b>Auto-applied tuning drifts on its own.</b> Bounded &mdash; one step per run, floor, ceiling, every change logged &mdash; but real. Pass explicit thresholds to pin it, or tune with <code>--dry-run</code> and commit the changes yourself.</p></div>
+      <div class="limit"><span class="mark">05</span><p><b>Auto-applied tuning drifts on its own.</b> Bounded &mdash; one step per run, floor, ceiling, every change logged &mdash; but real.</p></div>
+      <div class="limit"><span class="mark">06</span><p><b>The cost figures on this page are illustrative.</b> Per-step prices are placeholders from the bundled example, not measured rates. Substitute your own before drawing conclusions.</p></div>
     </div>
   </section>
 
+  </main>
+
   <footer>
     <span>TierWise &mdash; complexity-aware model routing</span>
-    <span>MIT &middot; github.com/Kibrom1/tierwise</span>
+    <span>MIT &middot; <a href="https://github.com/Kibrom1/tierwise">github.com/Kibrom1/tierwise</a></span>
   </footer>
 </div>
 
@@ -542,6 +1030,7 @@ cost per successful step: $0.0167
     migration: 0.15, architecture: 0.20, security_review: 0.20, debug_production: 0.22
   };
   var MAX_RAW = 13.0, LOW_MED = 0.30, MED_HIGH = 0.70, MARGIN = 0.07, FALLBACK = 0.50;
+  var SHORT = { low: "low", medium: "med", high: "high" };
 
   function bucket(value, edges, weights) {
     for (var i = 0; i < edges.length; i++) if (value <= edges[i]) return weights[i];
@@ -567,11 +1056,11 @@ cost per successful step: $0.0167
   }
 
   var PRESETS = [
-    { name: "typo",        cat: "typo",         files: 1,  lines: 3,    depth: 0, ctx: false, amb: 0,    green: false },
-    { name: "unit test",   cat: "unit_test",    files: 1,  lines: 25,   depth: 0, ctx: false, amb: 0,    green: false },
-    { name: "filter param",cat: "feature",      files: 3,  lines: 90,   depth: 1, ctx: true,  amb: 0,    green: false },
-    { name: "wide rename", cat: "rename",       files: 20, lines: 600,  depth: 3, ctx: false, amb: 0,    green: false },
-    { name: "auth refactor", cat: "refactor",   files: 4,  lines: 150,  depth: 2, ctx: true,  amb: 0.3,  green: false },
+    { name: "typo", cat: "typo", files: 1, lines: 3, depth: 0, ctx: false, amb: 0, green: false },
+    { name: "unit test", cat: "unit_test", files: 1, lines: 25, depth: 0, ctx: false, amb: 0, green: false },
+    { name: "filter param", cat: "feature", files: 3, lines: 90, depth: 1, ctx: true, amb: 0, green: false },
+    { name: "wide rename", cat: "rename", files: 20, lines: 600, depth: 3, ctx: false, amb: 0, green: false },
+    { name: "auth refactor", cat: "refactor", files: 4, lines: 150, depth: 2, ctx: true, amb: 0.3, green: false },
     { name: "billing rework", cat: "architecture", files: 30, lines: 2000, depth: 6, ctx: true, amb: 0.9, green: false }
   ];
 
@@ -591,8 +1080,9 @@ cost per successful step: $0.0167
   var ruler = el("ruler");
   PRESETS.forEach(function (preset) {
     var value = score(preset);
+
     var dot = document.createElement("div");
-    dot.className = "dot is-" + ({ low: "low", medium: "med", high: "high" })[tierFor(value)];
+    dot.className = "dot is-" + SHORT[tierFor(value)];
     dot.style.left = (value * 100) + "%";
     dot.title = preset.name + " — " + value.toFixed(3);
     ruler.appendChild(dot);
@@ -608,22 +1098,17 @@ cost per successful step: $0.0167
 
   function read() {
     return {
-      cat: fields.cat.value,
-      files: +fields.files.value,
-      lines: +fields.lines.value,
-      depth: +fields.depth.value,
-      amb: +fields.amb.value,
-      ctx: fields.ctx.checked,
-      green: fields.green.checked
+      cat: fields.cat.value, files: +fields.files.value, lines: +fields.lines.value,
+      depth: +fields.depth.value, amb: +fields.amb.value,
+      ctx: fields.ctx.checked, green: fields.green.checked
     };
   }
 
   function render() {
     var s = read();
     var value = score(s), tier = tierFor(value), confidence = confFor(value);
-    var short = { low: "low", medium: "med", high: "high" }[tier];
 
-    el("o-cat").textContent = ((PRIORS[s.cat] >= 0 ? "+" : "") + PRIORS[s.cat].toFixed(2));
+    el("o-cat").textContent = (PRIORS[s.cat] >= 0 ? "+" : "") + PRIORS[s.cat].toFixed(2);
     el("o-files").textContent = s.files;
     el("o-lines").textContent = s.lines;
     el("o-depth").textContent = s.depth;
@@ -632,10 +1117,11 @@ cost per successful step: $0.0167
     el("marker").style.left = (value * 100) + "%";
     el("v-score").textContent = value.toFixed(3);
     el("v-conf").textContent = confidence.toFixed(2);
+    el("v-model").textContent = "[models]." + tier;
 
     var tierEl = el("v-tier");
     tierEl.textContent = tier;
-    tierEl.className = "verdict-tier is-" + short;
+    tierEl.className = "verdict-tier is-" + SHORT[tier];
 
     var pathEl = el("v-path");
     if (confidence < FALLBACK) {
@@ -646,13 +1132,10 @@ cost per successful step: $0.0167
       pathEl.textContent = "heuristic decided it — no classifier call";
     }
 
-    el("v-model").textContent = "[models]." + tier;
-
     Array.prototype.forEach.call(document.querySelectorAll(".preset"), function (button, index) {
-      var preset = PRESETS[index];
-      var same = preset.cat === s.cat && preset.files === s.files && preset.lines === s.lines &&
-        preset.depth === s.depth && preset.ctx === s.ctx && Math.abs(preset.amb - s.amb) < 1e-9 &&
-        preset.green === s.green;
+      var p = PRESETS[index];
+      var same = p.cat === s.cat && p.files === s.files && p.lines === s.lines &&
+        p.depth === s.depth && p.ctx === s.ctx && Math.abs(p.amb - s.amb) < 1e-9 && p.green === s.green;
       button.setAttribute("aria-pressed", same ? "true" : "false");
     });
   }
@@ -673,7 +1156,23 @@ cost per successful step: $0.0167
   });
 
   load(PRESETS[4]);
-</script>
 
+  // Mark the section currently in view in the nav.
+  var links = Array.prototype.slice.call(document.querySelectorAll("nav.sections a"));
+  var targets = links.map(function (a) { return document.querySelector(a.getAttribute("href")); });
+  if ("IntersectionObserver" in window) {
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        var index = targets.indexOf(entry.target);
+        links.forEach(function (a, i) {
+          if (i === index) a.setAttribute("aria-current", "true");
+          else a.removeAttribute("aria-current");
+        });
+      });
+    }, { rootMargin: "-56px 0px -70% 0px" });
+    targets.forEach(function (t) { if (t) observer.observe(t); });
+  }
+</script>
 </body>
 </html>
