@@ -1,0 +1,54 @@
+# Publishes to PyPI when a version tag is pushed.
+#
+# Trusted publishing, so there is no API token to store anywhere. Configure the
+# publisher once at https://pypi.org/manage/account/publishing/ with this
+# repository, workflow filename `release.yml`, and environment `pypi`. Then:
+#
+#   git tag v0.8.0 && git push origin v0.8.0
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build
+        run: |
+          pip install build
+          python -m build
+      # Test the artifact that will actually be published, not the source tree:
+      # a release that ships failing code is worse than no release.
+      - name: Test the built wheel
+        run: |
+          pip install dist/*.whl pytest
+          git config --global user.email "ci@example.com"
+          git config --global user.name "ci"
+          pytest -q
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/tierwise
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

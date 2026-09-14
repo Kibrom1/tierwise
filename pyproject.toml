@@ -4,17 +4,26 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tierwise"
-version = "0.7.0"
+version = "0.8.0"
 description = "Loop-aware AI model routing: route each step of a task to the cheapest tier that can do it, and tune the thresholds from outcomes."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Kibrom" }]
 keywords = ["llm", "routing", "cost-optimization", "anthropic", "claude"]
 classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
-  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Typing :: Typed",
 ]
 dependencies = []
 
@@ -27,9 +36,13 @@ tierwise = "tierwise.cli:main"
 
 [project.urls]
 Repository = "https://github.com/Kibrom1/tierwise"
+Issues = "https://github.com/Kibrom1/tierwise/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tierwise"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/", "tests/", "examples/", "README.md", "USAGE.md", "LICENSE", "pyproject.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

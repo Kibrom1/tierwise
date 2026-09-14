@@ -26,6 +26,7 @@ whole loop offline in one command.
 ## Install
 
 ```bash
+pip install tierwise          # once released; see Releasing below
 pip install -e .              # core, zero runtime dependencies
 pip install -e ".[anthropic]" # + live LLM classifier fallback
 pip install -e ".[dev]"       # + pytest
@@ -512,6 +513,22 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 pytest -q
 ```
+
+CI runs the suite on 3.10 through 3.13 for every push and pull request
+(`.github/workflows/tests.yml`). It needs no network and no API key.
+
+## Releasing
+
+`.github/workflows/release.yml` builds, runs the suite against the built wheel,
+and publishes on a version tag:
+
+```bash
+git tag v0.8.0 && git push origin v0.8.0
+```
+
+It uses PyPI trusted publishing, so no token is stored anywhere. Configure the
+publisher once at <https://pypi.org/manage/account/publishing/> — this
+repository, workflow `release.yml`, environment `pypi`.
 
 ## Roadmap
 
