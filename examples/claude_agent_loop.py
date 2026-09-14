@@ -56,9 +56,12 @@ from tierwise import (
 
 LOG = "agent-loop.jsonl"
 
-# Illustrative only -- placeholders for the per-step cost your own accounting
-# would report. Replace with real figures before drawing any conclusions.
-ILLUSTRATIVE_STEP_COST = {Tier.LOW: 0.004, Tier.MEDIUM: 0.019, Tier.HIGH: 0.094}
+# Rough per-step costs at published February 2026 prices, for a ~6k-token
+# context and ~600 output tokens with no cache in play. The earlier figures here
+# implied a 23x spread between tiers; the real spread is 5x, which matters --
+# most of the saving in a real agent comes from tier *and* from not forfeiting
+# the prompt cache. See tierwise.pricing.
+ILLUSTRATIVE_STEP_COST = {Tier.LOW: 0.009, Tier.MEDIUM: 0.018, Tier.HIGH: 0.045}
 
 
 # --------------------------------------------------------------------------

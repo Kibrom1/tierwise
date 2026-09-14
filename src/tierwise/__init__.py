@@ -32,6 +32,16 @@ from .diff import (
 )
 from .mapping import DEFAULT_MODELS, ModelMap
 from .models import Classification, RoutingDecision, Source, TaskSignals, Tier
+from .pricing import (
+    PRICES,
+    ModelPrice,
+    SwitchContext,
+    SwitchVerdict,
+    breakeven_output_tokens,
+    evaluate_switch,
+    price_for,
+    step_cost,
+)
 from .replay import ReplayResult, ReplayRow, replay
 from .router import Router, RouterConfig
 from .runner import (
@@ -64,6 +74,7 @@ __all__ = [
     "as_outcome",
     "Attempt",
     "BoundaryAdjustment",
+    "breakeven_output_tokens",
     "CallFn",
     "Classification",
     "Classifier",
@@ -74,6 +85,7 @@ __all__ = [
     "DEFAULT_THRESHOLDS",
     "DiffStat",
     "EscalationPolicy",
+    "evaluate_switch",
     "Executor",
     "find_config",
     "heuristic_classify",
@@ -83,10 +95,13 @@ __all__ = [
     "make_anthropic_call_fn",
     "make_anthropic_executor",
     "ModelMap",
+    "ModelPrice",
     "NullSink",
     "Outcome",
     "parse_name_status",
     "parse_numstat",
+    "price_for",
+    "PRICES",
     "read_events",
     "replay",
     "ReplayResult",
@@ -102,8 +117,11 @@ __all__ = [
     "signals_from_stat",
     "Source",
     "StderrSink",
+    "step_cost",
     "StepResult",
     "StubClassifier",
+    "SwitchContext",
+    "SwitchVerdict",
     "TaskRunner",
     "TaskSignals",
     "TelemetryLog",

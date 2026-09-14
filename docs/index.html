@@ -331,6 +331,7 @@
   <nav class="sections" aria-label="Sections">
     <ol>
       <li><a href="#why">Why</a></li>
+      <li><a href="#switching">Switching cost</a></li>
       <li><a href="#scoring">Scoring</a></li>
       <li><a href="#loops">The two loops</a></li>
       <li><a href="#control">Control</a></li>
@@ -469,15 +470,72 @@
           <table>
             <thead><tr><th>strategy</th><th>spend</th><th>what happened</th></tr></thead>
             <tbody>
-              <tr><td>Every step at the top tier</td><td class="w num">$0.470</td><td>no failures, no evidence</td></tr>
-              <tr><td>Per-step routing</td><td class="w num">$0.234</td><td>one step escalated and passed on retry</td></tr>
+              <tr><td>Every step at the top tier</td><td class="w num">$0.225</td><td>no failures, no evidence</td></tr>
+              <tr><td>Per-step routing</td><td class="w num">$0.144</td><td>one step escalated and passed on retry</td></tr>
             </tbody>
           </table>
         </div>
         <p class="note">
-          Half the spend, and — more useful long-term — a log of which steps needed what.
+          A third off, and — more useful long-term — a log of which steps needed what.
+          The tier spread at published prices is about 5×, not the 20× people assume,
+          so the honest ceiling on tier routing alone is smaller than it looks.
         </p>
       </div>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------------- -->
+
+  <section id="switching">
+    <div class="sec-head col">
+      <span class="eyebrow">the part that bites</span>
+      <h2>A cheaper model can cost more.</h2>
+    </div>
+    <div class="stack-lg">
+      <p class="col">
+        Prompt cache entries are tied to a model. Leaving a model forfeits its cache and
+        pays a cache <em>write</em> on arrival at the next one. Against a long conversation
+        that penalty dwarfs the tier saving:
+      </p>
+      <div class="table-wrap col">
+        <table>
+          <thead><tr><th>100k cached context, one small step</th><th>cost</th></tr></thead>
+          <tbody>
+            <tr><td>stay on the top tier, cache hit</td><td class="w num">$0.050</td></tr>
+            <tr><td>drop to the cheap tier, cache miss</td><td class="w num">$0.125</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="col">
+        <strong>Routing down costs 2.5× more.</strong> It only starts paying once the output
+        is large enough to outrun the cache write — about 3,750 tokens against that context,
+        and most agent steps produce a tenth of that. A router that ignores this will
+        confidently spend more than doing nothing at all.
+      </p>
+      <div class="table-wrap col">
+        <table>
+          <thead><tr><th>cached context</th><th>output needed before dropping a tier pays</th></tr></thead>
+          <tbody>
+            <tr><td class="w num">10,000</td><td class="w num">375 tokens</td></tr>
+            <tr><td class="w num">50,000</td><td class="w num">1,875 tokens</td></tr>
+            <tr><td class="w num">200,000</td><td class="w num">7,500 tokens</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note col">
+        So TierWise weighs the move, not just the task. Tell it what is cached and what
+        output you expect, and a downgrade that would cost more is held back and logged as
+        <code>cache_hold</code>. Upgrades are never gated this way — a step that needs a
+        better model needs it whatever the cache is doing.
+      </p>
+      <pre class="col"><span class="k">from</span> tierwise <span class="k">import</span> Router, SwitchContext, TaskSignals, Tier
+
+Router().route(
+    TaskSignals(category=<span class="s">"typo"</span>, lines_changed=<span class="num">2</span>),
+    context=SwitchContext(cached_tokens=<span class="num">100_000</span>,
+                          expected_output_tokens=<span class="num">400</span>,
+                          incumbent=Tier.HIGH),
+)  <span class="c"># -> high, source=cache_hold</span></pre>
     </div>
   </section>
 

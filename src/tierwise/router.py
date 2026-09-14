@@ -27,6 +27,7 @@ from .escalation import EscalationPolicy, Outcome
 from .llm_classifier import Classifier, default_classifier
 from .mapping import ModelMap
 from .models import RoutingDecision, Source, TaskSignals, Tier
+from .pricing import SwitchContext, evaluate_switch
 from .telemetry import NullSink, TelemetrySink, build_event
 from .thresholds import Thresholds
 
@@ -55,6 +56,13 @@ class RouterConfig:
     #: A downgrade that fails escalates straight back up, which is the safety
     #: net that makes exploring affordable at all.
     exploration_rate: float = 0.0
+
+    #: Weigh what a tier change costs before making it. Prompt caches are tied
+    #: to a model, so dropping a tier mid-conversation forfeits a warm cache and
+    #: pays a cache write on arrival -- which, against a large context, costs
+    #: more than the tier saves. Only downgrades are gated: a step that needs a
+    #: better model needs it whatever the cache is doing.
+    respect_switching_cost: bool = True
 
 
 class Router:
@@ -92,8 +100,15 @@ class Router:
         signals: TaskSignals,
         session_id: Optional[str] = None,
         step_index: Optional[int] = None,
+        context: Optional[SwitchContext] = None,
     ) -> RoutingDecision:
-        """Route one task -- or one step of one -- to a tier and model."""
+        """Route one task -- or one step of one -- to a tier and model.
+
+        ``context`` describes what a tier change would cost right now: how much
+        context is cached, how much output is expected, and which tier holds the
+        warm cache. Supply it and cheap-looking downgrades that would actually
+        cost more are held back.
+        """
         started = time.perf_counter()
 
         if self.config.trust_hints and signals.tier_hint is not None:
@@ -124,6 +139,10 @@ class Router:
         floored_tier, rationale = self._apply_floor(tier, signals, rationale)
         if floored_tier is not tier:
             tier, source, confidence = floored_tier, Source.FLOOR, 1.0
+
+        tier, source, rationale = self._apply_switching_cost(
+            tier, source, rationale, context
+        )
 
         explored_from = None
         if self._should_explore(tier, signals, source):
@@ -171,6 +190,25 @@ class Router:
 
     # -- internals -----------------------------------------------------------
 
+    def _apply_switching_cost(
+        self, tier: Tier, source: Source, rationale: str,
+        context: Optional[SwitchContext],
+    ) -> tuple[Tier, Source, str]:
+        """Hold a downgrade that would cost more than it saves."""
+        if not self.config.respect_switching_cost or context is None:
+            return tier, source, rationale
+        if context.incumbent is None or tier >= context.incumbent:
+            return tier, source, rationale
+
+        verdict = evaluate_switch(context.incumbent, tier, context, self.model_map.model_for)
+        if verdict.switch:
+            return tier, source, rationale
+        return (
+            context.incumbent,
+            Source.CACHE_HOLD,
+            f"{rationale}; held at {context.incumbent.value}: {verdict.reason}",
+        )
+
     def _should_explore(self, tier: Tier, signals: TaskSignals, source: Source) -> bool:
         """Never explore against someone's explicit instruction.
 
@@ -182,7 +220,7 @@ class Router:
             return False
         if tier is Tier.LOW:
             return False            # nothing below to try
-        if source is Source.FLOOR or signals.min_tier is not None:
+        if source in {Source.FLOOR, Source.CACHE_HOLD} or signals.min_tier is not None:
             return False
         if signals.tier_hint is not None and self.config.trust_hints:
             return False

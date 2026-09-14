@@ -87,6 +87,10 @@ class Source(str, enum.Enum):
     #: cheaper tier would have done. The only source that produces evidence
     #: about over-provisioning; see Router.config.exploration_rate.
     EXPLORATION = "exploration"
+    #: The cheaper tier was chosen and then held back, because leaving the
+    #: incumbent model would have forfeited a warm prompt cache worth more than
+    #: the tier saving. See pricing.evaluate_switch.
+    CACHE_HOLD = "cache_hold"
 
 
 @dataclass
