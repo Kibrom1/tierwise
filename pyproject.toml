@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tierwise"
+version = "0.1.0"
+description = "Route coding tasks to the cheapest model tier that can actually do them."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Kibrom" }]
+keywords = ["llm", "routing", "cost-optimization", "anthropic", "claude"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Intended Audience :: Developers",
+]
+dependencies = []
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.40"]
+dev = ["pytest>=7.4", "pytest-cov>=4.1"]
+
+[project.scripts]
+tierwise = "tierwise.cli:main"
+
+[project.urls]
+Repository = "https://github.com/Kibrom1/tierwise"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tierwise"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
