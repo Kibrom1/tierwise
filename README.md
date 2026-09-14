@@ -15,6 +15,12 @@ actually predicts complexity is context — file count, lines changed, dependenc
 depth, whether existing logic has to be understood, and how underspecified the
 request is. Category is kept only as a small tie-breaking prior.
 
+**Site:** [`docs/`](docs/) is the landing page, deployed to GitHub Pages by
+`.github/workflows/pages.yml` on any push to `main` that touches it. The
+workflow needs Pages switched on once: **Settings → Pages → Build and
+deployment → Source: GitHub Actions**. It is a single self-contained
+`index.html` — no build step, no dependencies.
+
 **New here?** [USAGE.md](USAGE.md) is the step-by-step guide for wiring this
 into a Claude-based agent or CI, and `examples/claude_agent_loop.py` runs the
 whole loop offline in one command.
@@ -473,6 +479,7 @@ src/tierwise/
   thresholds.py      the tunable cuts, and where they persist
   tuner.py           ThresholdTuner — the outer loop
   cli.py             route / explain / models / thresholds / tune
+docs/                the landing page (single self-contained index.html)
 examples/            runnable agent-loop walkthrough
 tests/               174 tests, no network
 ```

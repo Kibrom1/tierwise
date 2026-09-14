@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="TierWise routes each step of a coding task to the cheapest model tier that can do it, and tunes its own thresholds from what happens next.">
+<style>
+  /* Reset equivalent to the one the Artifact host injects, so this standalone
+     copy renders identically when served from GitHub Pages. */
+  body { margin: 0; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+</style>
+<title>TierWise</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=Newsreader:opsz,wght@6..72,380;6..72,500&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+
+    --paper:      #F6F7F4;
+    --surface:    #FFFFFF;
+    --sunk:       #ECEEE9;
+    --ink:        #10161A;
+    --ink-soft:   #4E5A5B;
+    --ink-faint:  #808C8B;
+    --rule:       #D8DDD6;
+
+    --t-low:      #4E9086;
+    --t-med:      #2C6376;
+    --t-high:     #1B3446;
+    --t-low-bg:   #DCEBE7;
+    --t-med-bg:   #D4E2E9;
+    --t-high-bg:  #CDD6DE;
+
+    --signal:     #B4452F;
+    --signal-bg:  #F6E2DC;
+
+    --shadow:     0 1px 2px rgba(16, 22, 26, .06), 0 8px 24px -12px rgba(16, 22, 26, .18);
+
+    --display: "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+    --body: "Newsreader", Georgia, "Times New Roman", serif;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+    --measure: 34rem;
+    --wide: 60rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --paper:     #0E1417;
+      --surface:   #151C20;
+      --sunk:      #111819;
+      --ink:       #E6EBE6;
+      --ink-soft:  #A3B0AE;
+      --ink-faint: #778483;
+      --rule:      #263033;
+      --t-low:     #6FC4B6;
+      --t-med:     #67AFC9;
+      --t-high:    #A7BED2;
+      --t-low-bg:  #1B3330;
+      --t-med-bg:  #17303A;
+      --t-high-bg: #1F2C37;
+      --signal:    #E28775;
+      --signal-bg: #35201C;
+      --shadow:    0 1px 2px rgba(0,0,0,.4), 0 10px 30px -14px rgba(0,0,0,.7);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper:     #0E1417;
+    --surface:   #151C20;
+    --sunk:      #111819;
+    --ink:       #E6EBE6;
+    --ink-soft:  #A3B0AE;
+    --ink-faint: #778483;
+    --rule:      #263033;
+    --t-low:     #6FC4B6;
+    --t-med:     #67AFC9;
+    --t-high:    #A7BED2;
+    --t-low-bg:  #1B3330;
+    --t-med-bg:  #17303A;
+    --t-high-bg: #1F2C37;
+    --signal:    #E28775;
+    --signal-bg: #35201C;
+    --shadow:    0 1px 2px rgba(0,0,0,.4), 0 10px 30px -14px rgba(0,0,0,.7);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 1.0625rem;
+    line-height: 1.62;
+    padding-inline: 20px;
+    padding-block: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page { max-width: var(--wide); margin-inline: auto; }
+  .col  { max-width: var(--measure); }
+
+  h1, h2, h3 { font-family: var(--display); font-weight: 700; text-wrap: balance; margin: 0; line-height: 1.1; }
+  p { margin: 0; }
+
+  a { color: inherit; text-decoration-color: var(--t-med); text-underline-offset: 3px; }
+  a:hover { text-decoration-thickness: 2px; }
+  :focus-visible { outline: 2px solid var(--t-med); outline-offset: 3px; border-radius: 2px; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: .6875rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 500;
+  }
+
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ---------- masthead ---------- */
+
+  header.masthead {
+    display: flex; flex-wrap: wrap; gap: 12px 24px;
+    align-items: baseline; justify-content: space-between;
+    padding-block: 28px 0;
+  }
+  .wordmark { font-family: var(--display); font-weight: 700; font-size: 1.25rem; letter-spacing: -.01em; }
+  .wordmark .wise { color: var(--ink-faint); }
+
+  /* ---------- hero ---------- */
+
+  .hero { padding-block: 40px 8px; display: flex; flex-direction: column; gap: 22px; }
+  .hero h1 { font-size: clamp(2.25rem, 7vw, 3.75rem); letter-spacing: -.02em; }
+  .lede { font-size: 1.1875rem; color: var(--ink-soft); max-width: 38rem; }
+  .lede strong { color: var(--ink); font-weight: 500; }
+
+  /* ---------- the scale ---------- */
+
+  .scale-panel {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    box-shadow: var(--shadow);
+    padding: 26px 22px 22px;
+    display: flex; flex-direction: column; gap: 22px;
+  }
+
+  .scale-head { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: baseline; justify-content: space-between; }
+
+  .ruler { position: relative; padding-block: 30px 34px; }
+
+  .bands { display: flex; height: 30px; border-radius: 2px; overflow: hidden; }
+  .band { position: relative; }
+  .band.low  { background: var(--t-low-bg);  flex: 30; }
+  .band.med  { background: var(--t-med-bg);  flex: 40; }
+  .band.high { background: var(--t-high-bg); flex: 30; }
+  .band span {
+    position: absolute; inset-inline-start: 8px; top: 50%; translate: 0 -50%;
+    font-family: var(--mono); font-size: .625rem; letter-spacing: .12em; text-transform: uppercase;
+  }
+  .band.low  span { color: var(--t-low); }
+  .band.med  span { color: var(--t-med); }
+  .band.high span { color: var(--t-high); }
+
+  .cut { position: absolute; top: 22px; bottom: 20px; width: 1px; background: var(--ink); opacity: .55; }
+  .cut::after {
+    content: attr(data-label);
+    position: absolute; bottom: -20px; inset-inline-start: 50%; translate: -50% 0;
+    font-family: var(--mono); font-size: .625rem; color: var(--ink-soft); white-space: nowrap;
+  }
+  .trough {
+    position: absolute; top: 30px; height: 30px;
+    background: repeating-linear-gradient(-45deg, transparent 0 3px, var(--ink) 3px 4px);
+    opacity: .22;
+  }
+
+  .dot {
+    position: absolute; top: 10px;
+    width: 11px; height: 11px; border-radius: 50%;
+    translate: -50% 0;
+    border: 2px solid var(--surface);
+    background: var(--ink-soft);
+  }
+  .dot.is-low  { background: var(--t-low); }
+  .dot.is-med  { background: var(--t-med); }
+  .dot.is-high { background: var(--t-high); }
+
+  .marker {
+    position: absolute; top: 26px; bottom: 16px; width: 2px;
+    background: var(--signal);
+    translate: -1px 0;
+    transition: inset-inline-start .18s ease;
+  }
+  .marker::before {
+    content: ""; position: absolute; top: -7px; inset-inline-start: 50%; translate: -50% 0;
+    border: 5px solid transparent; border-top-color: var(--signal);
+  }
+
+  .axis { display: flex; justify-content: space-between; font-family: var(--mono); font-size: .625rem; color: var(--ink-faint); }
+
+  /* ---------- the scorer ---------- */
+
+  .scorer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 15rem); gap: 24px; }
+  @media (max-width: 44rem) { .scorer { grid-template-columns: 1fr; } }
+
+  .controls { display: flex; flex-direction: column; gap: 14px; }
+  .field { display: grid; grid-template-columns: 9.5rem 1fr 3rem; gap: 10px; align-items: center; }
+  @media (max-width: 30rem) { .field { grid-template-columns: 1fr 2.5rem; } .field input[type="range"] { grid-column: 1 / -1; } }
+  .field label { font-family: var(--mono); font-size: .75rem; color: var(--ink-soft); }
+  .field output { font-family: var(--mono); font-size: .75rem; text-align: end; color: var(--ink); }
+  input[type="range"] { accent-color: var(--t-med); width: 100%; }
+  .checks { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+  .checks label { font-family: var(--mono); font-size: .75rem; color: var(--ink-soft); display: flex; gap: 7px; align-items: center; }
+  input[type="checkbox"] { accent-color: var(--t-med); }
+  select {
+    font-family: var(--mono); font-size: .75rem; padding: 4px 6px;
+    background: var(--sunk); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 2px; width: 100%;
+  }
+
+  .verdict {
+    background: var(--sunk); border: 1px solid var(--rule); border-radius: 2px;
+    padding: 16px; display: flex; flex-direction: column; gap: 10px;
+    align-self: start;
+  }
+  .verdict-tier { font-family: var(--display); font-size: 1.75rem; line-height: 1; letter-spacing: -.01em; }
+  .verdict-tier.is-low  { color: var(--t-low); }
+  .verdict-tier.is-med  { color: var(--t-med); }
+  .verdict-tier.is-high { color: var(--t-high); }
+  .kv { display: flex; justify-content: space-between; gap: 12px; font-family: var(--mono); font-size: .75rem; }
+  .kv dt { color: var(--ink-faint); }
+  .kv dd { margin: 0; color: var(--ink); }
+  .path {
+    font-family: var(--mono); font-size: .6875rem; line-height: 1.5;
+    padding: 8px 10px; border-radius: 2px;
+    background: var(--t-med-bg); color: var(--t-med);
+  }
+  .path.is-fallback { background: var(--signal-bg); color: var(--signal); }
+
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; }
+  .preset {
+    font-family: var(--mono); font-size: .6875rem;
+    background: none; color: var(--ink-soft);
+    border: 1px solid var(--rule); border-radius: 2px;
+    padding: 4px 8px; cursor: pointer;
+  }
+  .preset:hover { border-color: var(--t-med); color: var(--ink); }
+  .preset[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+  /* ---------- sections ---------- */
+
+  section { padding-block: 56px; border-top: 1px solid var(--rule); }
+  section:first-of-type { border-top: 0; }
+  .sec-head { display: flex; flex-direction: column; gap: 10px; margin-block-end: 26px; }
+  .sec-head h2 { font-size: clamp(1.5rem, 4vw, 2rem); letter-spacing: -.015em; }
+  .stack { display: flex; flex-direction: column; gap: 18px; }
+
+  pre {
+    margin: 0; padding: 14px 16px; overflow-x: auto;
+    background: var(--sunk); border: 1px solid var(--rule); border-radius: 2px;
+    font-family: var(--mono); font-size: .8125rem; line-height: 1.65;
+    color: var(--ink);
+  }
+  pre .c { color: var(--ink-faint); }
+  pre .k { color: var(--t-med); }
+  pre .s { color: var(--t-low); }
+  code { font-family: var(--mono); font-size: .875em; }
+
+  table { border-collapse: collapse; width: 100%; font-size: .9375rem; }
+  .table-wrap { overflow-x: auto; }
+  th, td { text-align: start; padding: 8px 14px 8px 0; border-bottom: 1px solid var(--rule); }
+  th { font-family: var(--mono); font-size: .6875rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); font-weight: 500; }
+  td.w { font-family: var(--mono); font-size: .8125rem; white-space: nowrap; }
+
+  /* ---------- loop strip ---------- */
+
+  .steps { display: flex; flex-wrap: wrap; gap: 6px; }
+  .step {
+    font-family: var(--mono); font-size: .6875rem;
+    padding: 6px 9px; border-radius: 2px; border: 1px solid transparent;
+    display: flex; flex-direction: column; gap: 2px; min-width: 5.5rem;
+  }
+  .step b { font-weight: 500; font-size: .8125rem; }
+  .step.low  { background: var(--t-low-bg);  color: var(--t-low); }
+  .step.med  { background: var(--t-med-bg);  color: var(--t-med); }
+  .step.high { background: var(--t-high-bg); color: var(--t-high); }
+  .step.fail { background: var(--signal-bg); color: var(--signal); }
+  .step small { opacity: .8; }
+
+  .note { font-size: .9375rem; color: var(--ink-soft); }
+
+  .limits { display: grid; gap: 2px; }
+  .limit { display: grid; grid-template-columns: 1.5rem 1fr; gap: 10px; padding-block: 10px; border-bottom: 1px solid var(--rule); }
+  .limit:last-child { border-bottom: 0; }
+  .limit .mark { font-family: var(--mono); font-size: .8125rem; color: var(--signal); }
+  .limit p { font-size: .9375rem; }
+  .limit b { font-weight: 500; }
+
+  footer {
+    border-top: 1px solid var(--rule); padding-block: 32px 48px;
+    display: flex; flex-wrap: wrap; gap: 10px 26px; justify-content: space-between;
+    font-family: var(--mono); font-size: .75rem; color: var(--ink-faint);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead">
+    <div class="wordmark">Tier<span class="wise">Wise</span></div>
+    <div class="eyebrow">Python 3.10+ &middot; no runtime dependencies &middot; 174 tests</div>
+  </header>
+
+  <div class="hero">
+    <h1>Every step pays for the hardest step in the task.</h1>
+    <p class="lede">
+      TierWise scores what a coding step actually involves &mdash; files touched, lines changed,
+      dependency depth, how underspecified it is &mdash; and routes it to the cheapest model tier
+      that can do it. <strong>One score, two cuts, three tiers.</strong> Drag the signals and watch
+      where a task lands.
+    </p>
+
+    <div class="scale-panel">
+      <div class="scale-head">
+        <span class="eyebrow">complexity score &rarr; tier</span>
+        <span class="eyebrow">cuts at 0.30 and 0.70</span>
+      </div>
+
+      <div class="ruler" id="ruler">
+        <div class="bands">
+          <div class="band low"><span>low</span></div>
+          <div class="band med"><span>medium</span></div>
+          <div class="band high"><span>high</span></div>
+        </div>
+        <div class="trough" style="left: 23%; width: 14%;"></div>
+        <div class="trough" style="left: 63%; width: 14%;"></div>
+        <div class="cut" style="left: 30%;" data-label="0.30"></div>
+        <div class="cut" style="left: 70%;" data-label="0.70"></div>
+        <div class="marker" id="marker" style="left: 0%;"></div>
+      </div>
+
+      <div class="axis"><span class="num">0.00</span><span>hatching = low confidence, sent to the classifier</span><span class="num">1.00</span></div>
+
+      <div class="presets" id="presets"></div>
+
+      <div class="scorer">
+        <div class="controls">
+          <div class="field">
+            <label for="f-cat">category</label>
+            <select id="f-cat"></select>
+            <output id="o-cat"></output>
+          </div>
+          <div class="field">
+            <label for="f-files">files touched</label>
+            <input type="range" id="f-files" min="1" max="40" step="1" value="1">
+            <output class="num" id="o-files">1</output>
+          </div>
+          <div class="field">
+            <label for="f-lines">lines changed</label>
+            <input type="range" id="f-lines" min="0" max="2000" step="10" value="0">
+            <output class="num" id="o-lines">0</output>
+          </div>
+          <div class="field">
+            <label for="f-depth">dependency depth</label>
+            <input type="range" id="f-depth" min="0" max="8" step="1" value="0">
+            <output class="num" id="o-depth">0</output>
+          </div>
+          <div class="field">
+            <label for="f-amb">ambiguity</label>
+            <input type="range" id="f-amb" min="0" max="1" step="0.05" value="0">
+            <output class="num" id="o-amb">0.00</output>
+          </div>
+          <div class="checks">
+            <label><input type="checkbox" id="f-ctx"> needs existing context</label>
+            <label><input type="checkbox" id="f-green"> greenfield</label>
+          </div>
+        </div>
+
+        <div class="verdict">
+          <div class="verdict-tier is-low" id="v-tier">low</div>
+          <dl class="kv"><dt>score</dt><dd class="num" id="v-score">0.000</dd></dl>
+          <dl class="kv"><dt>confidence</dt><dd class="num" id="v-conf">1.00</dd></dl>
+          <dl class="kv"><dt>model</dt><dd id="v-model">from tierwise.toml</dd></dl>
+          <p class="path" id="v-path">heuristic decided it &mdash; no classifier call</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section>
+    <div class="sec-head col">
+      <span class="eyebrow">first decision</span>
+      <h2>Three lines, then your existing call.</h2>
+    </div>
+    <div class="stack col">
+      <pre><span class="c"># not on PyPI yet</span>
+pip install -e /path/to/tierwise</pre>
+      <pre><span class="k">from</span> tierwise <span class="k">import</span> Router, TaskSignals
+
+router = Router()
+decision = router.route(TaskSignals(category=<span class="s">"bugfix"</span>, file_count=<span class="num">4</span>, lines_changed=<span class="num">150</span>))
+
+client.messages.create(model=decision.model, ...)  <span class="c"># unchanged</span></pre>
+      <p class="note">
+        <code>decision.model</code> is a plain string. TierWise never makes the call &mdash; which is
+        why any provider works. Model names live in a <code>tierwise.toml</code> you commit, so CI,
+        the tuning cron and every developer resolve the same ones:
+      </p>
+      <pre>$ tierwise models
+low     gpt-5-mini                   [config]
+medium  llama-4-70b                  [config]
+high    claude-opus-4-5              [env]</pre>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head col">
+      <span class="eyebrow">the score</span>
+      <h2>Category is a weak signal. Context is not.</h2>
+    </div>
+    <div class="stack col">
+      <p>
+        &ldquo;Write a unit test&rdquo; is fifteen lines or a six-hour slog through mocked
+        dependencies. What predicts difficulty is everything around the label, so category only
+        breaks ties &mdash; it never drives the decision.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>signal</th><th>contribution</th></tr></thead>
+          <tbody>
+            <tr><td>files touched</td><td class="w">1 / 2&ndash;3 / 4&ndash;10 / &gt;10 &rarr; 0, 1, 2, 3</td></tr>
+            <tr><td>lines changed</td><td class="w">&lt;20 / &lt;100 / &lt;400 / &ge;400 &rarr; 0, 1, 2, 3</td></tr>
+            <tr><td>dependency depth</td><td class="w">0 / 1&ndash;2 / &gt;2 &rarr; 0, 1, 2</td></tr>
+            <tr><td>needs existing context</td><td class="w">+1.5</td></tr>
+            <tr><td>ambiguity (0&ndash;1)</td><td class="w">&times;3.0 &mdash; the heaviest</td></tr>
+            <tr><td>greenfield</td><td class="w">&minus;0.5</td></tr>
+            <tr><td>category</td><td class="w">&minus;0.10 (typo) &hellip; +0.22 (debug prod)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">
+        Confidence is the distance from the nearest cut, and it is continuous. A score sitting on a
+        cut has confidence 0 &mdash; which is exactly the task worth spending a cheap classifier call
+        on. Everything else resolves for free. If confidence could only take a handful of values, a
+        small threshold change would either do nothing or change everything, and the loop below could
+        not work at all.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head col">
+      <span class="eyebrow">inner loop</span>
+      <h2>The tier climbs for one hard step, then drops back.</h2>
+    </div>
+    <div class="stack">
+      <p class="col">
+        A router that picks one tier per task recreates the problem one level down. Each step is
+        routed on its own; a step that comes back wrong escalates without restarting the task. This
+        is a real run of the bundled example:
+      </p>
+      <div class="steps">
+        <div class="step low"><small>step 0</small><b>low</b><small>read the failing test</small></div>
+        <div class="step high"><small>step 1</small><b>high</b><small>trace across modules</small></div>
+        <div class="step fail"><small>step 2</small><b>medium</b><small>tests fail &rarr;</small></div>
+        <div class="step high"><small>step 2 retry</small><b>high</b><small>tests pass</small></div>
+        <div class="step med"><small>step 3</small><b>medium</b><small>package-wide rename</small></div>
+        <div class="step low"><small>step 4</small><b>low</b><small>changelog entry</small></div>
+      </div>
+      <p class="note col">
+        One escalation, three de-escalations. Illustrative spend <span class="num">$0.234</span>
+        against <span class="num">$0.470</span> for sending every step to the top tier.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head col">
+      <span class="eyebrow">outer loop</span>
+      <h2>Each cut moves on the failures of the tier it governs.</h2>
+    </div>
+    <div class="stack">
+      <p class="col">
+        Outcomes you report go to a decision log. The tuner reads it, joins each decision to what
+        happened, and moves the thresholds those decisions came from &mdash; per boundary, never on
+        one aggregate rate:
+      </p>
+      <pre>$ tierwise tune routing.jsonl --rework-cost 0.05
+cost per successful step: $0.0167
+  low_medium   n=12  fail=0.00  expl=6/4   target=0.22 [cost-derived]  0.30 &rarr; 0.33  relaxed
+  medium_high  n=6   fail=0.67  expl=6/0   target=0.50 [cost-derived]  0.70 &rarr; 0.67  tightened</pre>
+      <p class="note col">
+        Two independent conclusions from one log, moving in opposite directions. Tuned values persist
+        and load in the next run, and a watermark means re-running over the same log changes nothing
+        &mdash; evidence is spent when it is acted on, not every time it is read.
+      </p>
+      <p class="col">
+        <strong>Failure is asymmetric, and that is the hard part.</strong> Under-provisioning shows up
+        in outcome data. Over-provisioning never does: the top tier does not fail work a cheap tier
+        could have handled. So a fraction of steps can be deliberately routed one tier
+        <em>below</em> the recommendation &mdash; <code>expl=6/4</code> above means six downgrades
+        tried, four succeeded. That is the only direct evidence that the cheap side has room. A
+        downgrade that fails escalates straight back up.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head col">
+      <span class="eyebrow">before you rely on it</span>
+      <h2>What it does not do.</h2>
+    </div>
+    <div class="limits col">
+      <div class="limit"><span class="mark">01</span><p><b>It does not extract the signals.</b> Nothing counts your files and lines for you yet &mdash; a <code>git diff</code> helper ships in the example, and ambiguity is still your judgement. Wrong signals in, wrong tier out.</p></div>
+      <div class="limit"><span class="mark">02</span><p><b>It is only as good as your verifier.</b> &ldquo;The response was non-empty&rdquo; gives you a loop that escalates on noise and then teaches the tuner from it. Point it at your tests.</p></div>
+      <div class="limit"><span class="mark">03</span><p><b>The built-in model names are guesses.</b> They are labelled <code>default (unverified)</code> for that reason. Set your own before the first call.</p></div>
+      <div class="limit"><span class="mark">04</span><p><b>Three tiers is the model.</b> That maps onto most small/mid/large lineups. Five meaningful sizes, or routing across providers by price, would be collapsing something finer.</p></div>
+      <div class="limit"><span class="mark">05</span><p><b>Auto-applied tuning drifts on its own.</b> Bounded &mdash; one step per run, floor, ceiling, every change logged &mdash; but real. Pass explicit thresholds to pin it, or tune with <code>--dry-run</code> and commit the changes yourself.</p></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>TierWise &mdash; complexity-aware model routing</span>
+    <span>MIT &middot; github.com/Kibrom1/tierwise</span>
+  </footer>
+</div>
+
+<script>
+  // Port of tierwise.heuristics, value for value.
+  var PRIORS = {
+    typo: -0.10, docstring: -0.10, comment: -0.10, formatting: -0.10, rename: -0.05,
+    unit_test: 0.00, bugfix: 0.05, refactor: 0.08, integration_test: 0.08, feature: 0.12,
+    migration: 0.15, architecture: 0.20, security_review: 0.20, debug_production: 0.22
+  };
+  var MAX_RAW = 13.0, LOW_MED = 0.30, MED_HIGH = 0.70, MARGIN = 0.07, FALLBACK = 0.50;
+
+  function bucket(value, edges, weights) {
+    for (var i = 0; i < edges.length; i++) if (value <= edges[i]) return weights[i];
+    return weights[weights.length - 1];
+  }
+
+  function score(s) {
+    var raw =
+      bucket(s.files, [1, 3, 10], [0, 1, 2, 3]) +
+      bucket(s.lines, [20, 100, 400], [0, 1, 2, 3]) +
+      bucket(s.depth, [0, 2], [0, 1, 2]) +
+      (s.ctx ? 1.5 : 0) +
+      s.amb * 3.0 +
+      (s.green ? -0.5 : 0) +
+      (PRIORS[s.cat] || 0) * MAX_RAW;
+    return Math.max(0, Math.min(1, raw / MAX_RAW));
+  }
+
+  function tierFor(v) { return v < LOW_MED ? "low" : v < MED_HIGH ? "medium" : "high"; }
+  function confFor(v) {
+    var d = Math.min(Math.abs(v - LOW_MED), Math.abs(v - MED_HIGH));
+    return Math.max(0, Math.min(1, d / (MARGIN * 2)));
+  }
+
+  var PRESETS = [
+    { name: "typo",        cat: "typo",         files: 1,  lines: 3,    depth: 0, ctx: false, amb: 0,    green: false },
+    { name: "unit test",   cat: "unit_test",    files: 1,  lines: 25,   depth: 0, ctx: false, amb: 0,    green: false },
+    { name: "filter param",cat: "feature",      files: 3,  lines: 90,   depth: 1, ctx: true,  amb: 0,    green: false },
+    { name: "wide rename", cat: "rename",       files: 20, lines: 600,  depth: 3, ctx: false, amb: 0,    green: false },
+    { name: "auth refactor", cat: "refactor",   files: 4,  lines: 150,  depth: 2, ctx: true,  amb: 0.3,  green: false },
+    { name: "billing rework", cat: "architecture", files: 30, lines: 2000, depth: 6, ctx: true, amb: 0.9, green: false }
+  ];
+
+  var el = function (id) { return document.getElementById(id); };
+  var fields = {
+    cat: el("f-cat"), files: el("f-files"), lines: el("f-lines"),
+    depth: el("f-depth"), amb: el("f-amb"), ctx: el("f-ctx"), green: el("f-green")
+  };
+
+  Object.keys(PRIORS).forEach(function (key) {
+    var option = document.createElement("option");
+    option.value = key;
+    option.textContent = key.replace(/_/g, " ");
+    fields.cat.appendChild(option);
+  });
+
+  var ruler = el("ruler");
+  PRESETS.forEach(function (preset) {
+    var value = score(preset);
+    var dot = document.createElement("div");
+    dot.className = "dot is-" + ({ low: "low", medium: "med", high: "high" })[tierFor(value)];
+    dot.style.left = (value * 100) + "%";
+    dot.title = preset.name + " — " + value.toFixed(3);
+    ruler.appendChild(dot);
+
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "preset";
+    button.setAttribute("aria-pressed", "false");
+    button.innerHTML = preset.name + ' <span class="num">' + value.toFixed(2) + "</span>";
+    button.addEventListener("click", function () { load(preset); });
+    el("presets").appendChild(button);
+  });
+
+  function read() {
+    return {
+      cat: fields.cat.value,
+      files: +fields.files.value,
+      lines: +fields.lines.value,
+      depth: +fields.depth.value,
+      amb: +fields.amb.value,
+      ctx: fields.ctx.checked,
+      green: fields.green.checked
+    };
+  }
+
+  function render() {
+    var s = read();
+    var value = score(s), tier = tierFor(value), confidence = confFor(value);
+    var short = { low: "low", medium: "med", high: "high" }[tier];
+
+    el("o-cat").textContent = ((PRIORS[s.cat] >= 0 ? "+" : "") + PRIORS[s.cat].toFixed(2));
+    el("o-files").textContent = s.files;
+    el("o-lines").textContent = s.lines;
+    el("o-depth").textContent = s.depth;
+    el("o-amb").textContent = s.amb.toFixed(2);
+
+    el("marker").style.left = (value * 100) + "%";
+    el("v-score").textContent = value.toFixed(3);
+    el("v-conf").textContent = confidence.toFixed(2);
+
+    var tierEl = el("v-tier");
+    tierEl.textContent = tier;
+    tierEl.className = "verdict-tier is-" + short;
+
+    var pathEl = el("v-path");
+    if (confidence < FALLBACK) {
+      pathEl.className = "path is-fallback";
+      pathEl.textContent = "too close to a cut — handed to the LLM classifier";
+    } else {
+      pathEl.className = "path";
+      pathEl.textContent = "heuristic decided it — no classifier call";
+    }
+
+    el("v-model").textContent = "[models]." + tier;
+
+    Array.prototype.forEach.call(document.querySelectorAll(".preset"), function (button, index) {
+      var preset = PRESETS[index];
+      var same = preset.cat === s.cat && preset.files === s.files && preset.lines === s.lines &&
+        preset.depth === s.depth && preset.ctx === s.ctx && Math.abs(preset.amb - s.amb) < 1e-9 &&
+        preset.green === s.green;
+      button.setAttribute("aria-pressed", same ? "true" : "false");
+    });
+  }
+
+  function load(preset) {
+    fields.cat.value = preset.cat;
+    fields.files.value = preset.files;
+    fields.lines.value = preset.lines;
+    fields.depth.value = preset.depth;
+    fields.amb.value = preset.amb;
+    fields.ctx.checked = preset.ctx;
+    fields.green.checked = preset.green;
+    render();
+  }
+
+  Object.keys(fields).forEach(function (key) {
+    fields[key].addEventListener("input", render);
+  });
+
+  load(PRESETS[4]);
+</script>
+
+</body>
+</html>
