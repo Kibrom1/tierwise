@@ -412,7 +412,7 @@
           </div>
         </div>
 
-        <div class="verdict">
+        <div class="verdict" role="status" aria-live="polite" aria-atomic="true">
           <div class="verdict-tier is-low" id="v-tier">low</div>
           <dl class="kv"><dt>score</dt><dd class="num" id="v-score">0.000</dd></dl>
           <dl class="kv"><dt>confidence</dt><dd class="num" id="v-conf">1.00</dd></dl>
@@ -588,6 +588,10 @@ cost per successful step: $0.0167
           Two independent conclusions from one log, moving in opposite directions. All the failures
           landing in <code>low</code> says nothing about the medium/high cut, and moving both would
           push medium-tier work to the top tier on the strength of failures that happened elsewhere.
+        </p>
+        <p class="note col">
+          That run used the same illustrative per-step prices as the table above, so
+          <code>cost_per_success</code> there is a shape, not a rate.
         </p>
       </div>
 
@@ -860,7 +864,8 @@ result.ok, result.tier, result.tiers, result.total_cost_usd</pre>
               <tr>
                 <td class="w">Running</td>
                 <td><code>TaskRunner</code>, <code>StepResult</code>, <code>Attempt</code>, <code>make_anthropic_executor</code></td>
-                <td>run the loop around your executor and verifier</td>
+                <td>run the loop around your executor and verifier; a <code>StepResult</code>
+                  carries every <code>Attempt</code> made and what they cost</td>
               </tr>
               <tr>
                 <td class="w">Classifying</td>
@@ -1002,13 +1007,14 @@ result.ok, result.tier, result.tiers, result.total_cost_usd</pre>
     <div class="sec-head col">
       <span class="eyebrow">before you rely on it</span>
       <h2>What it does not do.</h2>
+      <p class="note">Each of these is answered at length in the <a href="#faq">FAQ</a>.</p>
     </div>
     <div class="limits col">
-      <div class="limit"><span class="mark">01</span><p><b>It does not extract the signals.</b> Nothing counts your files and lines for you yet &mdash; a <code>git diff</code> helper ships in the example, and ambiguity is still your judgement. Wrong signals in, wrong tier out.</p></div>
-      <div class="limit"><span class="mark">02</span><p><b>It is only as good as your verifier.</b> &ldquo;The response was non-empty&rdquo; gives you a loop that escalates on noise and then teaches the tuner from it. Point it at your tests.</p></div>
-      <div class="limit"><span class="mark">03</span><p><b>The built-in model names are guesses.</b> They are labelled <code>default (unverified)</code> for that reason. Set your own before the first call.</p></div>
-      <div class="limit"><span class="mark">04</span><p><b>Three tiers is the model.</b> That maps onto most small/mid/large lineups. Five meaningful sizes, or routing across providers by price, would be collapsing something finer.</p></div>
-      <div class="limit"><span class="mark">05</span><p><b>Auto-applied tuning drifts on its own.</b> Bounded &mdash; one step per run, floor, ceiling, every change logged &mdash; but real.</p></div>
+      <div class="limit"><span class="mark">01</span><p><b>It does not extract the signals.</b> Wrong signals in, wrong tier out.</p></div>
+      <div class="limit"><span class="mark">02</span><p><b>It is only as good as your verifier.</b> A weak check teaches the tuner from noise.</p></div>
+      <div class="limit"><span class="mark">03</span><p><b>The built-in model names are guesses.</b> Set your own before the first call.</p></div>
+      <div class="limit"><span class="mark">04</span><p><b>Three tiers is the model.</b> Five meaningful sizes, or routing across providers by price, would be collapsing something finer.</p></div>
+      <div class="limit"><span class="mark">05</span><p><b>Auto-applied tuning drifts on its own.</b> Bounded &mdash; and still drift.</p></div>
     </div>
   </section>
 
