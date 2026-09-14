@@ -94,6 +94,9 @@ nothing to work with:
 | The actual model call | — |
 | An outcome label — did it work? | an escalation, and evidence for tuning |
 
+`TaskRunner` (below) automates the wiring between those, but never the two
+judgements themselves: you still supply the call and the standard.
+
 ## See the whole loop
 
 ```bash
@@ -133,6 +136,40 @@ Four things happened there, and they are the whole product:
 4. **The failure moved the thresholds.** The next run starts stricter.
 
 `--live` runs the same loop against the real API.
+
+## Letting it drive
+
+If you want it to act on its own decision rather than hand you a model id,
+`TaskRunner` runs the mechanism and keeps the two judgements injected:
+
+```python
+from tierwise import TaskRunner, make_anthropic_executor
+
+runner = TaskRunner(
+    executor=make_anthropic_executor(),       # makes the call
+    verify=lambda response: tests_pass(),     # says whether it worked
+    cost_fn=lambda response: price(response),
+)
+
+result = runner.run(TaskSignals(...))
+result.ok, result.tier, result.tiers, result.total_cost_usd
+```
+
+That routes, calls, checks, escalates, retries at the higher tier, records the
+outcome and stops at the cap — the same ten lines every integration writes, and
+the place a forgotten `mark_outcome` silently disables all learning.
+
+Two things worth being clear-eyed about before turning this loose:
+
+- **It is exactly as good as `verify`.** "The response was non-empty" gives you
+  a loop that escalates on noise and teaches the tuner from it. Point it at your
+  tests.
+- **A raised exception is not a tier problem.** It is recorded as `ERROR`, does
+  not escalate, and does not count as evidence — a bigger model cannot fix a
+  connection.
+
+`executor` is a plain function of the decision, so streaming, tool use or a
+different provider is a two-line replacement.
 
 ## Wiring it into your own loop
 

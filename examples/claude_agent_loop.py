@@ -12,13 +12,17 @@ calls:
 
 What it shows, in order:
 
-1. One task, four steps of unequal difficulty, each routed on its own.
+0. TaskRunner driving the whole thing: it routes, calls, checks, escalates and
+   records on its own. The two judgements stay yours -- `executor` makes the
+   call, `verify` decides whether the result is good.
+1. One task, five steps of unequal difficulty, each routed on its own.
 2. A step that fails at the tier it was routed to, and escalates.
 3. What that cost, against the bill for sending every step to the top tier.
 4. The outer loop reading the log those steps just wrote.
 
-The one thing to take away: TierWise decides, you execute. It never makes the
-model call. Everything below the `Executor` line is yours to replace.
+The one thing to take away: TierWise never makes the model call itself. It runs
+the loop around one you supply. Everything below the `Executor` line is yours to
+replace.
 """
 
 from __future__ import annotations
@@ -38,6 +42,7 @@ from tierwise import (
     RouterConfig,
     RoutingSession,
     Source,
+    TaskRunner,
     TaskSignals,
     ThresholdTuner,
     Thresholds,
@@ -200,34 +205,32 @@ def run_task(executor: Executor, explore: float = 0.0, rng=None,
         config=RouterConfig(exploration_rate=explore),
         rng=rng,
     ))
-    spent = 0.0
+
+    # The runner needs to know which step a decision belongs to. Escalation
+    # preserves the signals object, so identity is a reliable key.
+    by_signals = {id(step.signals): step for step in TASK}
+
+    runner = TaskRunner(
+        executor=lambda decision: executor.run(
+            decision.model, decision.tier, by_signals[id(decision.signals)]
+        ),
+        verify=lambda result: result.ok,          # your tests go here
+        cost_fn=lambda result: result.cost_usd,
+        session=session,
+    )
 
     def say(line: str) -> None:
         if not quiet:
             print(line)
 
-    for step in TASK:
-        decision = session.route_step(step.signals)
-        result = executor.run(decision.model, decision.tier, step)
-        spent += result.cost_usd
-
-        mark = " (explored)" if decision.source is Source.EXPLORATION else ""
-        say(f"  step {decision.step_index}: {step.instruction[:46]:<46} "
-            f"{decision.tier.value:<6} {result.detail}{mark}")
-
-        outcome = Outcome.SUCCESS if result.ok else Outcome.INSUFFICIENT
-        retry = session.mark_outcome(outcome, cost_usd=result.cost_usd)
-
-        # A returned decision means the step earned a higher tier. Re-run it.
-        while retry is not None:
-            result = executor.run(retry.model, retry.tier, step)
-            spent += result.cost_usd
-            say(f"          {'escalated ->':<46} {retry.tier.value:<6} {result.detail}")
-            retry = session.mark_outcome(
-                Outcome.SUCCESS if result.ok else Outcome.INSUFFICIENT,
-                cost_usd=result.cost_usd,
-                decision=retry,
-            )
+    spent = 0.0
+    for step, outcome in zip(TASK, runner.run_all([s.signals for s in TASK])):
+        spent += outcome.total_cost_usd
+        for index, attempt in enumerate(outcome.attempts):
+            mark = " (explored)" if attempt.decision.source is Source.EXPLORATION else ""
+            label = step.instruction[:46] if index == 0 else "escalated ->"
+            say(f"  step {outcome.attempts[0].decision.step_index}: {label:<46} "
+                f"{attempt.tier.value:<6} {attempt.result.detail}{mark}")
 
     summary = session.summary()
     say(f"\n  tiers used:      {summary['tier_history']}")

@@ -23,6 +23,16 @@ from .llm_classifier import (
 from .mapping import DEFAULT_MODELS, ModelMap
 from .models import Classification, RoutingDecision, Source, TaskSignals, Tier
 from .router import Router, RouterConfig
+from .runner import (
+    Attempt,
+    CostFn,
+    Executor,
+    StepResult,
+    TaskRunner,
+    Verifier,
+    as_outcome,
+    make_anthropic_executor,
+)
 from .session import RoutingSession
 from .telemetry import (
     JsonlSink,
@@ -35,40 +45,48 @@ from .telemetry import (
 from .thresholds import DEFAULT_THRESHOLDS, Thresholds
 from .tuner import BoundaryAdjustment, ThresholdTuner, TuningResult
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 __all__ = [
+    "__version__",
     "AnthropicClassifier",
+    "as_outcome",
+    "Attempt",
     "BoundaryAdjustment",
     "CallFn",
     "Classification",
     "Classifier",
+    "CostFn",
+    "default_classifier",
     "DEFAULT_MODELS",
     "DEFAULT_THRESHOLDS",
     "EscalationPolicy",
+    "Executor",
+    "heuristic_classify",
     "JsonlSink",
     "LLMClassifier",
+    "make_anthropic_call_fn",
+    "make_anthropic_executor",
     "ModelMap",
     "NullSink",
     "Outcome",
+    "read_events",
     "Router",
     "RouterConfig",
     "RoutingDecision",
     "RoutingSession",
+    "score_task",
     "Source",
     "StderrSink",
+    "StepResult",
     "StubClassifier",
+    "TaskRunner",
     "TaskSignals",
     "TelemetryLog",
     "TelemetrySink",
-    "ThresholdTuner",
     "Thresholds",
+    "ThresholdTuner",
     "Tier",
     "TuningResult",
-    "__version__",
-    "default_classifier",
-    "heuristic_classify",
-    "make_anthropic_call_fn",
-    "read_events",
-    "score_task",
+    "Verifier",
 ]

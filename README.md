@@ -112,6 +112,39 @@ if retry:
 Routing is not one decision per task. It is a decision per *step*, and a slower
 decision about how to decide.
 
+### Letting it run the loop
+
+`TaskRunner` does the plumbing — route, call, check, escalate, retry at the new
+tier, record the outcome, stop at the cap — while the two judgements stay
+yours:
+
+```python
+from tierwise import TaskRunner, make_anthropic_executor
+
+runner = TaskRunner(
+    executor=make_anthropic_executor(),        # you own the call
+    verify=lambda response: tests_pass(),      # you own the standard
+    cost_fn=lambda response: price(response),
+)
+
+for step in agent_steps:
+    result = runner.run(TaskSignals(...))
+    print(result.ok, result.tier, result.tiers, result.total_cost_usd)
+```
+
+It still never makes the model call itself; `executor` does, and swapping in
+streaming, tool use or another provider is a two-line function.
+
+**The loop is exactly as good as `verify`.** A lazy check — "the response was
+non-empty" — gives you an automatic loop that escalates on noise and then
+teaches the tuner from it. Wire it to something you would actually trust: your
+tests, your linter, your reviewer. A thrown exception is recorded as
+`ERROR` and does *not* escalate, because a bigger model cannot fix a
+connection.
+
+The manual form below is the same loop written out, for when you want the
+pieces separately.
+
 ### Inner loop — per-step routing
 
 An agent working a task takes many steps, and they are not equally hard. A
@@ -405,12 +438,13 @@ src/tierwise/
   escalation.py      outcomes and the bump-one-tier policy
   telemetry.py       decision events and sinks
   router.py          orchestration and precedence (stateless)
+  runner.py          TaskRunner — runs the loop around your executor
   session.py         RoutingSession — the inner loop
   thresholds.py      the tunable cuts, and where they persist
   tuner.py           ThresholdTuner — the outer loop
   cli.py             route / explain / models / thresholds / tune
 examples/            runnable agent-loop walkthrough
-tests/               141 tests, no network
+tests/               158 tests, no network
 ```
 
 ## Development
