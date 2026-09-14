@@ -379,19 +379,48 @@ Anything with a `classify(signals) -> Classification` method can be passed as
 
 ## Configuration
 
-Model IDs change. Nothing in the routing logic needs editing when they do:
+Model names belong in the project, not in three environment variables set in
+three places. Put them in `tierwise.toml` next to your code and commit it —
+it is found by walking up from the working directory, so the CLI in CI, the
+tuning cron and every developer resolve the same names:
+
+```toml
+[models]
+low = "claude-haiku-4-5"
+medium = "claude-sonnet-4-5"
+high = "claude-opus-4-5"
+```
+
+`tierwise.json` with the same shape works too, and needs no TOML parser (which
+Python 3.10 lacks). Any provider: nothing here is parsed or validated, the
+strings come back verbatim as `decision.model`.
+
+Precedence: an explicit `ModelMap` > environment > config file > built-in
+defaults. `tierwise models` shows which applied:
+
+```console
+$ tierwise models
+low     gpt-5-mini                   [config]
+medium  llama-4-70b                  [config]
+high    claude-opus-4-5              [env]
+
+config file: /srv/app/tierwise.json
+```
+
+**The built-in defaults are guesses**, not recommendations — Anthropic IDs that
+may be out of date, and wrong by construction for any other provider. They are
+labelled `default (unverified)` precisely so a guess never reads as a choice.
 
 | Variable | Default |
 | --- | --- |
-| `TIERWISE_MODEL_LOW` | `claude-haiku-4-5` |
-| `TIERWISE_MODEL_MEDIUM` | `claude-sonnet-4-5` |
-| `TIERWISE_MODEL_HIGH` | `claude-opus-4-5` |
+| `TIERWISE_CONFIG` | nearest `tierwise.toml` / `tierwise.json` |
+| `TIERWISE_MODEL_LOW` / `_MEDIUM` / `_HIGH` | see above |
 | `TIERWISE_CLASSIFIER` | `stub` (`anthropic` for live) |
 | `TIERWISE_CLASSIFIER_MODEL` | `claude-haiku-4-5` |
 | `TIERWISE_THRESHOLDS` | `~/.tierwise/thresholds.json` |
 
-**Check the defaults against current model IDs before relying on them** — or
-pass an explicit `ModelMap(...)`.
+A config file that exists but cannot be parsed raises `ConfigError` rather than
+falling back — silently ignoring it would route against models nobody chose.
 
 ## Telemetry
 
@@ -434,7 +463,8 @@ src/tierwise/
   heuristics.py      complexity scoring, tier boundaries, confidence
   llm_classifier.py  Classifier protocol, StubClassifier, LLMClassifier,
                      make_anthropic_call_fn
-  mapping.py         tier -> model, env-overridable
+  config.py          project config discovery
+  mapping.py         tier -> model, with provenance, env-overridable
   escalation.py      outcomes and the bump-one-tier policy
   telemetry.py       decision events and sinks
   router.py          orchestration and precedence (stateless)
@@ -444,7 +474,7 @@ src/tierwise/
   tuner.py           ThresholdTuner — the outer loop
   cli.py             route / explain / models / thresholds / tune
 examples/            runnable agent-loop walkthrough
-tests/               158 tests, no network
+tests/               174 tests, no network
 ```
 
 ## Development

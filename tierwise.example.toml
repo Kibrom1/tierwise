@@ -1,0 +1,11 @@
+# Copy to tierwise.toml and commit it: model names are a project decision, and
+# every environment that routes -- your machine, CI, the tuning cron -- must
+# agree on them. TIERWISE_MODEL_LOW/_MEDIUM/_HIGH override per environment.
+#
+# Any provider. Nothing here is parsed or validated; these strings are handed
+# back verbatim as decision.model for your executor to use.
+
+[models]
+low = "claude-haiku-4-5"
+medium = "claude-sonnet-4-5"
+high = "claude-opus-4-5"

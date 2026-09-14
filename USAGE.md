@@ -341,10 +341,20 @@ To roll back, delete the thresholds file; defaults resume.
 
 ## Before production
 
-- **Check the model IDs.** `tierwise models` prints what it will call.
-  Defaults are `claude-haiku-4-5` / `claude-sonnet-4-5` / `claude-opus-4-5` —
-  verify against current IDs and override with `TIERWISE_MODEL_LOW` /
-  `_MEDIUM` / `_HIGH`.
+- **Set the model names and commit them.** Run `tierwise models`; anything
+  marked `default (unverified)` is a built-in guess, not a choice. Put the real
+  ones in a `tierwise.toml` at your project root so CI, the tuning cron and
+  every developer resolve the same names:
+
+  ```toml
+  [models]
+  low = "claude-haiku-4-5"
+  medium = "claude-sonnet-4-5"
+  high = "claude-opus-4-5"
+  ```
+
+  Any provider works — the strings are handed back verbatim.
+  `TIERWISE_MODEL_LOW` / `_MEDIUM` / `_HIGH` override per environment.
 - **Use `JsonlSink`, not `TelemetryLog`,** for anything long-lived. The outer
   loop learns from history, and an in-memory log is not history.
 - **Decide whether you want the LLM fallback live.** Default is a stub that

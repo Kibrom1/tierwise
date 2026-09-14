@@ -52,9 +52,18 @@ def test_explain_shows_contributions(capsys):
 
 
 def test_models_command_lists_all_tiers(capsys):
+    assert main(["models", "--json"]) == 0
+    described = json.loads(capsys.readouterr().out)
+    assert set(described["models"]) == {"low", "medium", "high"}
+    assert described["configured"] is False
+
+
+def test_models_command_flags_unverified_defaults(capsys):
+    """A guessed model id must not read as a chosen one."""
     assert main(["models"]) == 0
-    mapping = json.loads(capsys.readouterr().out)
-    assert set(mapping) == {"low", "medium", "high"}
+    out = capsys.readouterr().out
+    assert "default (unverified)" in out
+    assert "built-in guesses" in out
 
 
 def test_missing_subcommand_exits(capsys):

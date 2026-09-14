@@ -20,6 +20,7 @@ from .llm_classifier import (
     default_classifier,
     make_anthropic_call_fn,
 )
+from .config import ConfigError, find_config, load_config
 from .mapping import DEFAULT_MODELS, ModelMap
 from .models import Classification, RoutingDecision, Source, TaskSignals, Tier
 from .router import Router, RouterConfig
@@ -45,7 +46,7 @@ from .telemetry import (
 from .thresholds import DEFAULT_THRESHOLDS, Thresholds
 from .tuner import BoundaryAdjustment, ThresholdTuner, TuningResult
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 __all__ = [
     "__version__",
@@ -56,13 +57,16 @@ __all__ = [
     "CallFn",
     "Classification",
     "Classifier",
+    "ConfigError",
     "CostFn",
     "default_classifier",
+    "find_config",
     "DEFAULT_MODELS",
     "DEFAULT_THRESHOLDS",
     "EscalationPolicy",
     "Executor",
     "heuristic_classify",
+    "load_config",
     "JsonlSink",
     "LLMClassifier",
     "make_anthropic_call_fn",

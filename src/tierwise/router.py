@@ -67,7 +67,7 @@ class Router:
         thresholds: Optional[Thresholds] = None,
         rng: Optional[Callable[[], float]] = None,
     ) -> None:
-        self.model_map = model_map or ModelMap.from_env()
+        self.model_map = model_map if model_map is not None else ModelMap.resolve()
         self.classifier = classifier or default_classifier()
         self.config = config or RouterConfig()
         # Not `telemetry or NullSink()`: a sink that defines __len__ (such as

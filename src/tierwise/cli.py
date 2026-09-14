@@ -74,7 +74,10 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_signal_args(explain)
     explain.add_argument("--json", action="store_true", help="emit the breakdown as JSON")
 
-    subparsers.add_parser("models", help="print the current tier -> model mapping")
+    models = subparsers.add_parser(
+        "models", help="print the tier -> model mapping and where each name came from"
+    )
+    models.add_argument("--json", action="store_true", help="emit as JSON")
     subparsers.add_parser("thresholds", help="print the thresholds currently in force")
 
     tune = subparsers.add_parser(
@@ -150,8 +153,22 @@ def _cmd_explain(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_models(_args: argparse.Namespace) -> int:
-    print(json.dumps(ModelMap.from_env().as_dict(), indent=2))
+def _cmd_models(args: argparse.Namespace) -> int:
+    mapping = ModelMap.resolve()
+    described = mapping.describe()
+
+    if args.json:
+        print(json.dumps(described, indent=2))
+        return 0
+
+    for tier in Tier:
+        entry = described["models"][tier.value]
+        print(f"{tier.value:<7} {entry['model']:<28} [{entry['from']}]")
+    print()
+    print(f"config file: {described['config_file'] or 'none found'}")
+    if not described["configured"]:
+        print("No model names configured -- these are built-in guesses. Set them in "
+              "tierwise.toml or TIERWISE_MODEL_LOW/_MEDIUM/_HIGH.")
     return 0
 
 

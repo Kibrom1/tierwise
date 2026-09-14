@@ -2,6 +2,16 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def isolated_config(tmp_path, monkeypatch):
+    """Never discover a real tierwise.toml by walking up from the repo.
+
+    Config discovery searches parent directories, so without this a config file
+    anywhere above the checkout would change what the tests route to.
+    """
+    monkeypatch.setenv("TIERWISE_CONFIG", str(tmp_path / "absent.toml"))
+
+
+@pytest.fixture(autouse=True)
 def isolated_thresholds(tmp_path, monkeypatch):
     """Never read or write the developer's own tuned thresholds file.
 
