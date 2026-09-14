@@ -210,23 +210,31 @@ state. One `RoutingSession` per task.
 
 This is where most of the accuracy lives, and where most integrations are lazy.
 
-Two of the six come free from a diff:
+Four of the seven come straight from a diff — two counted, two read:
 
 ```python
-from claude_agent_loop import signals_from_git_diff
-signals = signals_from_git_diff("HEAD~1", category="refactor")
-# -> 11 files, 586 lines, requires_context=True  -> routed: high
+from tierwise import signals_from_diff
+
+signals = signals_from_diff("HEAD~1", category="refactor")
+# files touched: 3 · lines changed: 105
+# needs context: True   (git says those files were modified, not added)
+# greenfield:    False
 ```
 
-The other four are judgement your orchestrator has to make:
+`signals_from_diff(staged=True)` reads the index instead, which is the useful
+form in a pre-commit hook: route the work you are about to ask for, not the work
+you last finished. `signals_from_numstat()` takes diff output you already have.
 
-- **`requires_context`** (+1.5) — must existing logic be understood before
-  writing anything? New file: no. Editing a function whose callers matter: yes.
+The other two have no diff-side source, and are not guessed:
+
 - **`ambiguity`** 0.0–1.0 (×3.0, the heaviest signal) — how underspecified is
   the request? A ticket with acceptance criteria is 0.1; "make the checkout
   flow less confusing" is 0.9.
 - **`dependency_depth`** — how far the change reaches past the files it edits.
-- **`is_greenfield`** (−0.5) — no existing behaviour to preserve.
+
+Both default to `0`, which means *no signal* rather than *none*. A
+confident-looking number derived from nothing would be worse, because the router
+would weight it.
 
 **If you already know the answer, say so.** `tier_hint=Tier.HIGH` is trusted
 outright and skips inference entirely — it is the cheapest and most accurate

@@ -10,6 +10,11 @@ calls:
 
     python examples/claude_agent_loop.py --live
 
+Signals come from `tierwise.signals_from_diff()` in real use -- it reads
+`git diff` for the file and line counts, and reads whether files were added or
+modified for greenfield and needs-context. The steps below are hand-written so
+the example has a fixed script to demonstrate.
+
 What it shows, in order:
 
 0. TaskRunner driving the whole thing: it routes, calls, checks, escalates and
@@ -30,7 +35,6 @@ from __future__ import annotations
 import argparse
 import os
 import random
-import subprocess
 import sys
 from dataclasses import dataclass
 from typing import Optional, Protocol
@@ -44,6 +48,7 @@ from tierwise import (
     Source,
     TaskRunner,
     TaskSignals,
+    signals_from_diff,
     ThresholdTuner,
     Thresholds,
     Tier,
@@ -162,39 +167,6 @@ class AnthropicExecutor:
 
 
 # --------------------------------------------------------------------------
-# Signals: where the numbers come from.
-# --------------------------------------------------------------------------
-
-def signals_from_git_diff(ref: str = "HEAD~1", category: Optional[str] = None) -> TaskSignals:
-    """Build TaskSignals from a real diff -- a starting point, not a rule.
-
-    file_count and lines_changed come straight from `git diff --numstat`.
-    requires_context, ambiguity and dependency_depth are judgement calls your
-    orchestrator has to make; the defaults here are conservative.
-    """
-    out = subprocess.run(
-        ["git", "diff", "--numstat", ref],
-        capture_output=True, text=True, check=True,
-    ).stdout
-
-    files, lines = 0, 0
-    for row in out.splitlines():
-        parts = row.split("\t")
-        if len(parts) != 3:
-            continue
-        files += 1
-        added, removed = parts[0], parts[1]
-        lines += sum(int(v) for v in (added, removed) if v.isdigit())
-
-    return TaskSignals(
-        category=category,
-        file_count=max(files, 1),
-        lines_changed=lines,
-        requires_context=files > 1,
-    )
-
-
-# --------------------------------------------------------------------------
 # The loop.
 # --------------------------------------------------------------------------
 
@@ -255,6 +227,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--rework-cost", type=float, default=None, metavar="USD",
                         help="what a failed step costs beyond the model call; "
                              "makes the tuning target cost-derived")
+    parser.add_argument("--from-diff", metavar="REF", nargs="?", const="HEAD~1",
+                        help="route this repository's own diff instead of the "
+                             "scripted task (default ref: HEAD~1)")
     args = parser.parse_args(argv)
 
     if args.live:
@@ -264,6 +239,18 @@ def main(argv: Optional[list[str]] = None) -> int:
         executor: Executor = AnthropicExecutor()
     else:
         executor = StubExecutor()
+
+    if args.from_diff:
+        signals = signals_from_diff(args.from_diff)
+        decision = Router().route(signals)
+        print(f"Signals read from `git diff {args.from_diff}`:\n")
+        print(f"  files touched:    {signals.file_count}")
+        print(f"  lines changed:    {signals.lines_changed}")
+        print(f"  needs context:    {signals.requires_context}   (files were modified)")
+        print(f"  greenfield:       {signals.is_greenfield}")
+        print(f"  ambiguity/depth:  not in a diff -- yours to supply\n")
+        print(f"  -> {decision.tier.value} ({decision.source.value}): {decision.model}")
+        return 0
 
     rng = random.Random(7).random          # seeded, so the example is repeatable
     print("Routing one task, step by step:\n")

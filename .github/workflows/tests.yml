@@ -1,0 +1,43 @@
+# The suite needs no network and no API key, so there is nothing to gate this
+# on: it runs on every push and every pull request.
+
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 is the floor the package claims; the newest is what most people
+        # will actually install under. Both ends are worth knowing about.
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    name: python ${{ matrix.python }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # test_diff.py builds a real repository and diffs it, so git has to
+          # be usable in the runner -- it is, but the checkout must be real.
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Configure git for the diff tests
+        run: |
+          git config --global user.email "ci@example.com"
+          git config --global user.name "ci"
+          git config --global init.defaultBranch main
+      - name: Run tests
+        run: pytest -q

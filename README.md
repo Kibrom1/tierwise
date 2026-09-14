@@ -476,10 +476,11 @@ src/tierwise/
   session.py         RoutingSession — the inner loop
   thresholds.py      the tunable cuts, and where they persist
   tuner.py           ThresholdTuner — the outer loop
+  diff.py            git diff -> TaskSignals
   cli.py             route / explain / models / thresholds / tune
 docs/                the landing page (single self-contained index.html)
 examples/            runnable agent-loop walkthrough
-tests/               174 tests, no network
+tests/               192 tests, no network
 ```
 
 ## Development
