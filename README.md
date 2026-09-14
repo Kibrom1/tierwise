@@ -15,6 +15,10 @@ actually predicts complexity is context — file count, lines changed, dependenc
 depth, whether existing logic has to be understood, and how underspecified the
 request is. Category is kept only as a small tie-breaking prior.
 
+**New here?** [USAGE.md](USAGE.md) is the step-by-step guide for wiring this
+into a Claude-based agent or CI, and `examples/claude_agent_loop.py` runs the
+whole loop offline in one command.
+
 ## Install
 
 ```bash
@@ -343,7 +347,8 @@ src/tierwise/
   thresholds.py      the tunable cuts, and where they persist
   tuner.py           ThresholdTuner — the outer loop
   cli.py             route / explain / models / thresholds / tune
-tests/               108 tests, no network
+examples/            runnable agent-loop walkthrough
+tests/               109 tests, no network
 ```
 
 ## Development
