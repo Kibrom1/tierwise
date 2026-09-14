@@ -35,7 +35,7 @@ from .telemetry import (
 from .thresholds import DEFAULT_THRESHOLDS, Thresholds
 from .tuner import BoundaryAdjustment, ThresholdTuner, TuningResult
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = [
     "AnthropicClassifier",

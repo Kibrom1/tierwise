@@ -89,6 +89,12 @@ def _build_parser() -> argparse.ArgumentParser:
                       help="failure rate the loop steers toward (default: 0.10)")
     tune.add_argument("--step", type=float, default=0.03,
                       help="maximum threshold movement per run (default: 0.03)")
+    tune.add_argument("--rework-cost", type=float, default=None, metavar="USD",
+                      help="what one failed step costs beyond the model call; "
+                           "set it and each boundary steers to the break-even "
+                           "failure rate implied by its tiers' observed costs")
+    tune.add_argument("--window", type=int, default=None,
+                      help="consider only the most recent N outcomes")
     return parser
 
 
@@ -163,6 +169,8 @@ def _cmd_tune(args: argparse.Namespace) -> int:
         step=args.step,
         min_samples=args.min_samples,
         target_failure_rate=args.target_failure_rate,
+        rework_cost_usd=args.rework_cost,
+        window=args.window,
     )
     result = tuner.tune(args.log, apply=not args.dry_run)
     print(json.dumps(result.to_dict(), indent=2))

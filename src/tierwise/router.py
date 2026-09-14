@@ -17,9 +17,10 @@ outcome refers to) belongs to RoutingSession.
 
 from __future__ import annotations
 
+import random
 import time
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Callable, Optional
 
 from . import heuristics
 from .escalation import EscalationPolicy, Outcome
@@ -41,6 +42,20 @@ class RouterConfig:
     trust_hints: bool = True
     escalation: EscalationPolicy = field(default_factory=EscalationPolicy)
 
+    #: Fraction of eligible decisions deliberately routed one tier *below* the
+    #: recommendation, to find out whether the cheaper tier would have done.
+    #:
+    #: Outcomes are only ever observed at the tier actually used, so
+    #: under-provisioning is measurable and over-provisioning is not: the top
+    #: tier never fails work a cheap tier could have handled. Without
+    #: exploration the loop can only infer that the cheap side has room from the
+    #: *absence* of failures. This buys that evidence directly, and pays for it
+    #: in occasional avoidable retries -- so it is off by default.
+    #:
+    #: A downgrade that fails escalates straight back up, which is the safety
+    #: net that makes exploring affordable at all.
+    exploration_rate: float = 0.0
+
 
 class Router:
     def __init__(
@@ -50,6 +65,7 @@ class Router:
         config: Optional[RouterConfig] = None,
         telemetry: Optional[TelemetrySink] = None,
         thresholds: Optional[Thresholds] = None,
+        rng: Optional[Callable[[], float]] = None,
     ) -> None:
         self.model_map = model_map or ModelMap.from_env()
         self.classifier = classifier or default_classifier()
@@ -60,6 +76,8 @@ class Router:
         #: Loaded from disk when not supplied, so thresholds the tuner wrote in
         #: an earlier run are in force from the first decision of this one.
         self.thresholds = thresholds if thresholds is not None else Thresholds.load()
+        #: Injectable so exploration is testable without flaky randomness.
+        self.rng = rng if rng is not None else random.random
 
     @property
     def confidence_threshold(self) -> float:
@@ -107,6 +125,17 @@ class Router:
         if floored_tier is not tier:
             tier, source, confidence = floored_tier, Source.FLOOR, 1.0
 
+        explored_from = None
+        if self._should_explore(tier, signals, source):
+            explored_from = tier
+            tier = tier - 1
+            source = Source.EXPLORATION
+            rationale = (
+                f"{rationale}; explored down from {explored_from.value} "
+                f"to measure whether {tier.value} suffices"
+            )
+            confidence = 0.0
+
         decision = RoutingDecision(
             tier=tier,
             model=self.model_map.model_for(tier),
@@ -116,6 +145,7 @@ class Router:
             signals=signals,
             session_id=session_id,
             step_index=step_index,
+            explored_from=explored_from,
         )
 
         elapsed_ms = (time.perf_counter() - started) * 1000
@@ -140,6 +170,23 @@ class Router:
         return escalated
 
     # -- internals -----------------------------------------------------------
+
+    def _should_explore(self, tier: Tier, signals: TaskSignals, source: Source) -> bool:
+        """Never explore against someone's explicit instruction.
+
+        A tier hint or a min_tier floor is a person saying what this task needs;
+        quietly routing below it to gather data would be spending their task on
+        our curiosity.
+        """
+        if self.config.exploration_rate <= 0:
+            return False
+        if tier is Tier.LOW:
+            return False            # nothing below to try
+        if source is Source.FLOOR or signals.min_tier is not None:
+            return False
+        if signals.tier_hint is not None and self.config.trust_hints:
+            return False
+        return self.rng() < self.config.exploration_rate
 
     @staticmethod
     def _apply_floor(

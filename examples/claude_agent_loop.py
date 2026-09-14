@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import random
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -34,7 +35,9 @@ from tierwise import (
     JsonlSink,
     Outcome,
     Router,
+    RouterConfig,
     RoutingSession,
+    Source,
     TaskSignals,
     ThresholdTuner,
     Thresholds,
@@ -80,6 +83,16 @@ TASK = [
         # Routed at medium on its signals, but genuinely needs high: the step
         # fails, and the loop escalates it rather than restarting the task.
         needs=Tier.HIGH,
+    ),
+    Step(
+        # Large diff, trivial work. Its signals say medium; it only ever needed
+        # low. Nothing in ordinary outcome data can reveal that -- a step routed
+        # medium that succeeds looks identical whether or not low would have
+        # done. Only an exploration finds it.
+        "Rename sessionId to session_id across the package",
+        TaskSignals(category="rename", file_count=20, lines_changed=600,
+                    dependency_depth=3),
+        needs=Tier.LOW,
     ),
     Step(
         "Update the changelog entry",
@@ -180,8 +193,13 @@ def signals_from_git_diff(ref: str = "HEAD~1", category: Optional[str] = None) -
 # The loop.
 # --------------------------------------------------------------------------
 
-def run_task(executor: Executor, quiet: bool = False) -> tuple[float, float]:
-    session = RoutingSession(router=Router(telemetry=JsonlSink(LOG)))
+def run_task(executor: Executor, explore: float = 0.0, rng=None,
+             quiet: bool = False) -> tuple[float, float]:
+    session = RoutingSession(router=Router(
+        telemetry=JsonlSink(LOG),
+        config=RouterConfig(exploration_rate=explore),
+        rng=rng,
+    ))
     spent = 0.0
 
     def say(line: str) -> None:
@@ -193,8 +211,9 @@ def run_task(executor: Executor, quiet: bool = False) -> tuple[float, float]:
         result = executor.run(decision.model, decision.tier, step)
         spent += result.cost_usd
 
+        mark = " (explored)" if decision.source is Source.EXPLORATION else ""
         say(f"  step {decision.step_index}: {step.instruction[:46]:<46} "
-            f"{decision.tier.value:<6} {result.detail}")
+            f"{decision.tier.value:<6} {result.detail}{mark}")
 
         outcome = Outcome.SUCCESS if result.ok else Outcome.INSUFFICIENT
         retry = session.mark_outcome(outcome, cost_usd=result.cost_usd)
@@ -227,6 +246,12 @@ def main(argv: Optional[list[str]] = None) -> int:
                         help="run the outer loop over the log afterwards")
     parser.add_argument("--runs", type=int, default=6,
                         help="repeats before tuning (default: 6) -- one task is not evidence")
+    parser.add_argument("--explore", type=float, default=0.0, metavar="RATE",
+                        help="fraction of steps routed one tier below the "
+                             "recommendation, to measure whether cheaper would do")
+    parser.add_argument("--rework-cost", type=float, default=None, metavar="USD",
+                        help="what a failed step costs beyond the model call; "
+                             "makes the tuning target cost-derived")
     args = parser.parse_args(argv)
 
     if args.live:
@@ -237,8 +262,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     else:
         executor = StubExecutor()
 
+    rng = random.Random(7).random          # seeded, so the example is repeatable
     print("Routing one task, step by step:\n")
-    spent, all_high = run_task(executor)
+    spent, all_high = run_task(executor, explore=args.explore, rng=rng)
 
     print(f"\n  illustrative spend:  ${spent:.3f}")
     print(f"  every step at high:  ${all_high:.3f}")
@@ -248,16 +274,22 @@ def main(argv: Optional[list[str]] = None) -> int:
         # One task is four outcomes split across three tiers -- nowhere near
         # enough for any single boundary to have earned a move. Repeat first.
         for _ in range(max(args.runs - 1, 0)):
-            run_task(executor, quiet=True)
+            run_task(executor, explore=args.explore, rng=rng, quiet=True)
 
         print(f"\nOuter loop (after {args.runs} runs of the task):")
-        result = ThresholdTuner(min_samples=5).tune(LOG)
+        result = ThresholdTuner(min_samples=5, rework_cost_usd=args.rework_cost).tune(LOG)
         print(f"  {result.reason}")
+        if result.cost_per_success is not None:
+            print(f"  cost per successful step: ${result.cost_per_success:.4f}")
         for adj in result.adjustments:
             arrow = f"{adj.before:.2f} -> {adj.after:.2f}"
             rate = "n/a" if adj.failure_rate is None else f"{adj.failure_rate:.2f}"
-            print(f"    {adj.name:<13} {adj.evidence:<26} n={adj.samples:<3} "
-                  f"fail={rate:<5} {arrow:<14} {adj.direction}")
+            explored = f"expl={adj.explore_samples}/{adj.explore_successes}"
+            print(f"    {adj.name:<13} n={adj.samples:<3} fail={rate:<5} {explored:<12} "
+                  f"target={adj.target:.2f} [{adj.target_source}]  "
+                  f"{arrow:<14} {adj.direction}")
+            if adj.basis:
+                print(f"      on: {adj.basis}")
 
     print(f"\n  decision log: {LOG}")
     return 0

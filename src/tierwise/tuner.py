@@ -44,6 +44,11 @@ SUCCESS_OUTCOMES = {"success"}
 #: of event dicts.
 EventSource = Union[str, Path, TelemetryLog, Iterable[dict]]
 
+#: Bounds on a cost-derived target, so an odd cost ratio cannot produce a
+#: target of 0.99 (never tighten) or 0.001 (never relax).
+MIN_TARGET = 0.02
+MAX_TARGET = 0.50
+
 TIGHTEN = "tightened"
 RELAX = "relaxed"
 UNCHANGED = "unchanged"
@@ -76,6 +81,17 @@ class BoundaryAdjustment:
     direction: str
     before: float
     after: float
+    #: The failure rate this boundary is steering toward, and where it came
+    #: from: a hand-set constant, or the break-even rate implied by what the
+    #: two tiers actually cost.
+    target: Optional[float] = None
+    target_source: str = "fixed"
+    #: Exploration evidence: downgrades from the tier above this cut.
+    explore_samples: int = 0
+    explore_successes: int = 0
+    explore_success_rate: Optional[float] = None
+    #: Which evidence drove the move.
+    basis: Optional[str] = None
 
     @property
     def moved(self) -> bool:
@@ -99,6 +115,11 @@ class TuningResult:
     adjustments: list[BoundaryAdjustment] = field(default_factory=list)
     watermark_before: Optional[float] = None
     watermark_after: Optional[float] = None
+    explorations: int = 0
+    #: What the loop is actually trying to minimise. Tier is only a proxy for
+    #: it; this is the number to watch across runs.
+    cost_per_success: Optional[float] = None
+    mean_cost_by_tier: dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -125,6 +146,7 @@ class ThresholdTuner:
         floor: float = 0.10,
         ceiling: float = 0.90,
         window: Optional[int] = None,
+        rework_cost_usd: Optional[float] = None,
     ) -> None:
         self.step = step
         #: Required *per boundary*, not in total -- each cut moves on its own
@@ -137,6 +159,12 @@ class ThresholdTuner:
         #: stationary; a regime from six months ago should not outvote last
         #: week. None keeps everything since the watermark.
         self.window = window
+        #: What one failed step costs you beyond the model call -- rework,
+        #: review time, the delay. Set it and each boundary steers to the
+        #: break-even failure rate implied by its own tiers' observed costs
+        #: instead of a hand-picked constant. Left None, target_failure_rate
+        #: applies: the tuner will not invent a number only you can know.
+        self.rework_cost_usd = rework_cost_usd
 
     # -- data ----------------------------------------------------------------
 
@@ -185,6 +213,7 @@ class ThresholdTuner:
                 "tier": decision.get("tier"),
                 "source": decision.get("source"),
                 "confidence": decision.get("confidence"),
+                "explored_from": decision.get("explored_from"),
                 "outcome": label,
                 "failed": label in FAILURE_OUTCOMES,
                 "cost_usd": outcome.get("cost_usd"),
@@ -209,34 +238,61 @@ class ThresholdTuner:
         iterable of event dicts.
         """
         current = thresholds if thresholds is not None else Thresholds.load(thresholds_path)
-        scored = self.collect(_events_from(log), since=current.tuned_through)
+        events = list(_events_from(log))
+        scored = self.collect(events, since=current.tuned_through)
         if self.window is not None:
             scored = scored[-self.window:]
 
+        # Exploration rows are deliberate downgrades. They say nothing about
+        # the tier they ran at and everything about the tier above it, so they
+        # are held apart from the ordinary failure rate.
+        explored = [r for r in scored if r["source"] == "exploration"]
+        normal = [r for r in scored if r["source"] != "exploration"]
+
         per_tier: dict[str, dict[str, int]] = {}
-        for row in scored:
+        for row in normal:
             bucket = per_tier.setdefault(str(row["tier"]), {"total": 0, "failures": 0})
             bucket["total"] += 1
             bucket["failures"] += int(row["failed"])
 
-        failures = sum(1 for row in scored if row["failed"])
-        overall_rate = (failures / len(scored)) if scored else None
+        failures = sum(1 for row in normal if row["failed"])
+        overall_rate = (failures / len(normal)) if normal else None
+        # What a tier costs is a property of the model, not of how the routing
+        # decision was reached -- so this reads every priced outcome, including
+        # escalations and hints that the failure rate deliberately ignores.
+        # In a run where the top tier is only ever reached by escalation, those
+        # are the only prices it has.
+        cost_by_tier = self._mean_cost_by_tier(events)
         before = self._snapshot(current)
 
-        # Each cut answers to the evidence from the tier it governs.
+        low_target, low_target_source = self._target_for("low", "medium", cost_by_tier)
+        high_target, high_target_source = self._target_for("medium", "high", cost_by_tier)
+
+        # Each cut answers to the evidence from the tier it governs, plus any
+        # downgrades from the tier above it.
         adjustments = [
-            self._decide("low_medium", "tier=low", current.low_medium,
-                         [r for r in scored if r["tier"] == "low"]),
-            self._decide("medium_high", "tier=medium", current.medium_high,
-                         [r for r in scored if r["tier"] == "medium"]),
+            self._decide(
+                "low_medium", "tier=low", current.low_medium,
+                [r for r in normal if r["tier"] == "low"],
+                [r for r in explored if r["explored_from"] == "medium"],
+                low_target, low_target_source,
+            ),
+            self._decide(
+                "medium_high", "tier=medium", current.medium_high,
+                [r for r in normal if r["tier"] == "medium"],
+                [r for r in explored if r["explored_from"] == "high"],
+                high_target, high_target_source,
+            ),
             # The fallback cut governs when a confident heuristic call is
             # trusted, so it answers to how often confident calls are wrong --
             # excluding the top tier, where consulting the classifier could not
             # have produced a higher route anyway.
-            self._decide("llm_fallback", "source=heuristic, tier<high", current.llm_fallback,
-                         [r for r in scored
-                          if r["source"] == "heuristic" and r["tier"] != "high"],
-                         invert=True),
+            self._decide(
+                "llm_fallback", "source=heuristic, tier<high", current.llm_fallback,
+                [r for r in normal
+                 if r["source"] == "heuristic" and r["tier"] != "high"],
+                [], self.target_failure_rate, "fixed", invert=True,
+            ),
         ]
 
         proposed = current.copy()
@@ -258,6 +314,9 @@ class ThresholdTuner:
             adjustments=adjustments,
             watermark_before=current.tuned_through,
             watermark_after=current.tuned_through,
+            explorations=len(explored),
+            cost_per_success=self._cost_per_success(scored),
+            mean_cost_by_tier={k: round(v, 6) for k, v in cost_by_tier.items()},
         )
 
         if not scored:
@@ -298,40 +357,118 @@ class ThresholdTuner:
         evidence: str,
         value: float,
         rows: list[dict[str, Any]],
+        explore_rows: list[dict[str, Any]],
+        target: float,
+        target_source: str = "fixed",
         invert: bool = False,
     ) -> BoundaryAdjustment:
         """Move one cut on its own evidence, or report why it did not.
+
+        Precedence is safety first: observed failures at this tier outrank any
+        evidence that the cheaper side has room.
 
         ``invert`` flips the direction of the move: lowering a tier cut routes
         higher, but *raising* the fallback cut consults the classifier more, so
         the two respond to the same signal in opposite directions.
         """
-        if len(rows) < self.min_samples:
+        failures = sum(1 for r in rows if r["failed"])
+        rate = (failures / len(rows)) if rows else None
+        enough = len(rows) >= self.min_samples
+
+        explore_successes = sum(1 for r in explore_rows if not r["failed"])
+        explore_rate = (
+            explore_successes / len(explore_rows) if explore_rows else None
+        )
+        explored_enough = len(explore_rows) >= self.min_samples
+
+        detail = dict(
+            name=name, evidence=evidence, samples=len(rows), failures=failures,
+            failure_rate=round(rate, 4) if rate is not None else None,
+            target=round(target, 4), target_source=target_source,
+            explore_samples=len(explore_rows), explore_successes=explore_successes,
+            explore_success_rate=round(explore_rate, 4) if explore_rate is not None else None,
+        )
+
+        if not enough and not explored_enough:
             return BoundaryAdjustment(
-                name=name, evidence=evidence, samples=len(rows),
-                failures=sum(1 for r in rows if r["failed"]), failure_rate=None,
-                direction=INSUFFICIENT, before=value, after=value,
+                direction=INSUFFICIENT, before=value, after=value, **detail
             )
 
-        failures = sum(1 for r in rows if r["failed"])
-        rate = failures / len(rows)
-
-        if rate > self.target_failure_rate:
-            direction = TIGHTEN
+        if enough and rate > target:
+            direction, basis = TIGHTEN, "failures at this tier"
             delta = self.step if invert else -self.step
-        elif rate < self.target_failure_rate / 2:
-            direction = RELAX
+        elif explored_enough and explore_rate >= 1 - target:
+            # Downgrades from the tier above keep succeeding: the recommendation
+            # was over-provisioned. This is the only *direct* evidence of that
+            # -- ordinary outcomes can never supply it.
+            direction, basis = RELAX, "downgrades that succeeded"
+            delta = -self.step if invert else self.step
+        elif enough and rate < target / 2:
+            direction, basis = RELAX, "sustained success at this tier"
             delta = -self.step if invert else self.step
         else:
-            direction = UNCHANGED
-            delta = 0.0
+            direction, basis, delta = UNCHANGED, None, 0.0
 
         moved = min(max(value + delta, self.floor), self.ceiling)
         return BoundaryAdjustment(
-            name=name, evidence=evidence, samples=len(rows), failures=failures,
-            failure_rate=round(rate, 4), direction=direction,
-            before=value, after=moved,
+            direction=direction, basis=basis, before=value, after=moved, **detail
         )
+
+    # -- cost ----------------------------------------------------------------
+
+    @staticmethod
+    def _mean_cost_by_tier(events: list[dict[str, Any]]) -> dict[str, float]:
+        """Mean observed cost per tier, from every priced outcome in the log."""
+        decisions = {
+            e["decision_id"]: e for e in events
+            if e.get("event") == "routing_decision" and e.get("decision_id")
+        }
+        totals: dict[str, list[float]] = {}
+        for event in events:
+            if event.get("event") != "task_outcome":
+                continue
+            cost = event.get("cost_usd")
+            decision = decisions.get(event.get("decision_id"))
+            if cost is None or decision is None:
+                continue
+            totals.setdefault(str(decision.get("tier")), []).append(float(cost))
+        return {tier: sum(v) / len(v) for tier, v in totals.items() if v}
+
+    @staticmethod
+    def _cost_per_success(rows: list[dict[str, Any]]) -> Optional[float]:
+        """What the loop is actually minimising, when cost is recorded."""
+        spend = sum(float(r["cost_usd"]) for r in rows if r.get("cost_usd") is not None)
+        successes = sum(1 for r in rows if not r["failed"])
+        if not successes or not spend:
+            return None
+        return round(spend / successes, 6)
+
+    def _target_for(
+        self, cheap: str, expensive: str, cost_by_tier: dict[str, float]
+    ) -> tuple[float, str]:
+        """The failure rate at which trying the cheaper tier stops paying.
+
+        Trying cheap first costs ``c_cheap`` always, plus -- when it fails --
+        the expensive run anyway and whatever the failure itself cost you. It
+        breaks even against going straight to expensive at
+
+            p* = (c_exp - c_cheap) / (c_exp + rework)
+
+        With no rework cost that rate is close to 1: if a failure were free,
+        you would always try cheap first. Rework is the term that makes the
+        answer sane, and it is the one number the log cannot tell us -- so
+        without it we do not guess, we fall back to the fixed target.
+        """
+        if self.rework_cost_usd is None:
+            return self.target_failure_rate, "fixed"
+
+        c_cheap = cost_by_tier.get(cheap)
+        c_exp = cost_by_tier.get(expensive)
+        if not c_cheap or not c_exp or c_exp <= c_cheap:
+            return self.target_failure_rate, "fixed (no cost data)"
+
+        target = (c_exp - c_cheap) / (c_exp + self.rework_cost_usd)
+        return min(max(target, MIN_TARGET), MAX_TARGET), "cost-derived"
 
     @staticmethod
     def _enforce_gap(proposed: Thresholds, adjustments: list[BoundaryAdjustment]) -> None:

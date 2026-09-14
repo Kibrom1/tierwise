@@ -83,6 +83,10 @@ class Source(str, enum.Enum):
     LLM = "llm"
     ESCALATION = "escalation"
     FLOOR = "floor"
+    #: A deliberate downgrade below the recommendation, to find out whether the
+    #: cheaper tier would have done. The only source that produces evidence
+    #: about over-provisioning; see Router.config.exploration_rate.
+    EXPLORATION = "exploration"
 
 
 @dataclass
@@ -160,12 +164,17 @@ class RoutingDecision:
     session_id: Optional[str] = None
     step_index: Optional[int] = None
 
+    #: Set when this decision was an exploration: the tier that would have been
+    #: chosen. Its outcome is evidence about that tier, not about this one.
+    explored_from: Optional[Tier] = None
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "decision_id": self.decision_id,
             "session_id": self.session_id,
             "step_index": self.step_index,
             "tier": self.tier.value,
+            "explored_from": self.explored_from.value if self.explored_from else None,
             "model": self.model,
             "confidence": round(self.confidence, 3),
             "source": self.source.value,

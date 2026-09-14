@@ -188,7 +188,55 @@ Two further properties make this a loop rather than a report:
 in outcome data; over-provisioning does not — the top tier never fails a task
 the cheap tier could have done. So the loop tightens on observed failures and
 relaxes only on their sustained absence, which is the sole evidence that the
-cheap side has room.
+cheap side has room — unless you turn on exploration.
+
+### Exploration — the half of the evidence outcomes cannot give you
+
+Outcomes are only ever observed at the tier actually used. A step routed
+`medium` that succeeds looks identical whether or not `low` would have done, so
+no amount of ordinary logging reveals over-provisioning. Exploration buys that
+evidence directly: a small fraction of eligible decisions are routed one tier
+*below* the recommendation, and what happens is recorded.
+
+```python
+Router(config=RouterConfig(exploration_rate=0.05))   # off by default
+```
+
+A downgrade that succeeds is direct evidence the recommendation was too
+expensive; one that fails escalates straight back up, which is the safety net
+that makes exploring affordable. Explorations are logged as their own source
+with the tier they came down from, and they never touch the ordinary failure
+rate — a deliberate downgrade failing says nothing about the cut.
+
+It never explores against an instruction: not below a `min_tier` floor, not
+against a `tier_hint`, and never below `low`. Those are people saying what the
+task needs, and spending their task on our curiosity is not a trade the loop
+gets to make.
+
+Safety keeps precedence: real failures at a tier outrank any evidence that the
+cheaper side has room.
+
+### What rate should it steer to?
+
+`target_failure_rate` defaults to 0.10 — a hand-picked number. Tell it what a
+failure actually costs you and each boundary derives its own target instead:
+
+```bash
+tierwise tune routing.jsonl --rework-cost 0.50
+```
+
+Trying cheap first always costs the cheap run, plus — when it fails — the
+expensive run anyway and whatever the failure itself cost. That breaks even
+against going straight to expensive at
+
+```
+p* = (c_expensive - c_cheap) / (c_expensive + rework)
+```
+
+with the tier costs read from `cost_usd` in the log. Rework is the one term the
+log cannot supply, so without it nothing is guessed and the fixed target
+applies. `cost_per_success` is reported on every run: tier is only a proxy, and
+that is the number the loop is really trying to move.
 
 Because tuning auto-applies, the guardrails are load-bearing: a minimum sample
 count **per boundary**, one bounded step per run (0.03), a hard floor and
@@ -362,7 +410,7 @@ src/tierwise/
   tuner.py           ThresholdTuner — the outer loop
   cli.py             route / explain / models / thresholds / tune
 examples/            runnable agent-loop walkthrough
-tests/               118 tests, no network
+tests/               141 tests, no network
 ```
 
 ## Development

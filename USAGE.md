@@ -261,7 +261,38 @@ is two independent conclusions, not one rate applied twice.
 Tuned values persist to `~/.tierwise/thresholds.json` (`TIERWISE_THRESHOLDS`)
 and load automatically in the next `Router`. Nothing else to wire.
 
-What to expect: **it finds the expensive side faster than the cheap side.**
+### Two switches worth knowing
+
+**Exploration.** By default the loop can only learn from failures, and failures
+only tell you when a tier was too *small*. Nothing in ordinary outcome data ever
+says a task could have run cheaper — a step routed `medium` that succeeded looks
+the same whether or not `low` would have done. Turning on exploration routes a
+small fraction of steps one tier below the recommendation and records what
+happens:
+
+```python
+Router(config=RouterConfig(exploration_rate=0.05))   # 5% of eligible steps
+```
+
+A downgrade that fails escalates straight back up, so the cost of being wrong is
+one extra call. It never explores against a `tier_hint` or below a `min_tier`
+floor. Start at 0.05 and read `expl=n/successes` in the tuning report.
+
+**Cost-derived targets.** `--rework-cost USD` tells the tuner what one failed
+step costs you beyond the model call — rework, review, the delay. Each boundary
+then steers to the break-even failure rate implied by its own tiers' observed
+costs rather than a flat 0.10:
+
+```bash
+tierwise tune routing.jsonl --rework-cost 0.50
+```
+
+Cheap rework means tolerate more retries; expensive rework means tighten. It is
+the one number the log cannot infer, so without it the fixed target stands.
+Watch `cost_per_success` across runs — tier is a proxy, that is the real score.
+
+What to expect: **it finds the expensive side faster than the cheap side**
+(unless exploration is on).
 Under-provisioning shows up as a failed step; over-provisioning never shows up
 at all, because the top tier does not fail work a cheap tier could have done.
 So the loop tightens quickly on real failures and gives budget back only after
