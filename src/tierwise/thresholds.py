@@ -43,6 +43,12 @@ class Thresholds:
     updated_at: Optional[float] = None
     tuned_from: Optional[str] = None
 
+    #: Watermark: outcomes at or before this timestamp have already been acted
+    #: on. Without it the tuner re-reads the whole log every run and moves the
+    #: cuts again on evidence it already consumed -- a nightly job would walk
+    #: routing to the floor on one bad week and keep walking.
+    tuned_through: Optional[float] = None
+
     MIN_GAP = 0.15
 
     def validate(self) -> None:

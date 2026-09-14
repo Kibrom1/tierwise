@@ -33,12 +33,13 @@ from .telemetry import (
     read_events,
 )
 from .thresholds import DEFAULT_THRESHOLDS, Thresholds
-from .tuner import ThresholdTuner, TuningResult
+from .tuner import BoundaryAdjustment, ThresholdTuner, TuningResult
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "AnthropicClassifier",
+    "BoundaryAdjustment",
     "CallFn",
     "Classification",
     "Classifier",

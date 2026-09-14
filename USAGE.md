@@ -236,9 +236,27 @@ tierwise thresholds                      # what is in force now
 ```
 
 Run it **on a schedule against accumulated logs** — nightly, or per sprint — not
-after every task. It moves at most 0.03 per run and needs 20 outcomes before it
-acts at all, by design: a bad labelling day should not be able to relocate your
-routing.
+after every task. It moves at most 0.03 per run and needs 20 outcomes *per
+boundary* before that boundary moves at all: a bad labelling day should not be
+able to relocate your routing.
+
+Re-running is safe. A watermark in the thresholds file records which outcomes
+have already been acted on, so a second run over an unchanged log reports `no
+new outcomes since the last tuning` and changes nothing. Evidence that did not
+move anything — because it was in-band, or short of samples — is kept and
+counted again next time.
+
+Each cut answers to its own evidence: `low_medium` to failures of work routed
+`low`, `medium_high` to work routed `medium`, and the fallback cut to confident
+heuristic calls that went wrong below the top tier. Failures at `high` move
+nothing, because there is no higher tier to route to. So a report like
+
+```
+low_medium    tier=low      n=12  fail=0.00  0.30 -> 0.33   relaxed
+medium_high   tier=medium   n=6   fail=1.00  0.70 -> 0.67   tightened
+```
+
+is two independent conclusions, not one rate applied twice.
 
 Tuned values persist to `~/.tierwise/thresholds.json` (`TIERWISE_THRESHOLDS`)
 and load automatically in the next `Router`. Nothing else to wire.

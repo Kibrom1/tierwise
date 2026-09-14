@@ -180,17 +180,21 @@ def signals_from_git_diff(ref: str = "HEAD~1", category: Optional[str] = None) -
 # The loop.
 # --------------------------------------------------------------------------
 
-def run_task(executor: Executor) -> tuple[float, float]:
+def run_task(executor: Executor, quiet: bool = False) -> tuple[float, float]:
     session = RoutingSession(router=Router(telemetry=JsonlSink(LOG)))
     spent = 0.0
+
+    def say(line: str) -> None:
+        if not quiet:
+            print(line)
 
     for step in TASK:
         decision = session.route_step(step.signals)
         result = executor.run(decision.model, decision.tier, step)
         spent += result.cost_usd
 
-        print(f"  step {decision.step_index}: {step.instruction[:46]:<46} "
-              f"{decision.tier.value:<6} {result.detail}")
+        say(f"  step {decision.step_index}: {step.instruction[:46]:<46} "
+            f"{decision.tier.value:<6} {result.detail}")
 
         outcome = Outcome.SUCCESS if result.ok else Outcome.INSUFFICIENT
         retry = session.mark_outcome(outcome, cost_usd=result.cost_usd)
@@ -199,7 +203,7 @@ def run_task(executor: Executor) -> tuple[float, float]:
         while retry is not None:
             result = executor.run(retry.model, retry.tier, step)
             spent += result.cost_usd
-            print(f"          {'escalated ->':<46} {retry.tier.value:<6} {result.detail}")
+            say(f"          {'escalated ->':<46} {retry.tier.value:<6} {result.detail}")
             retry = session.mark_outcome(
                 Outcome.SUCCESS if result.ok else Outcome.INSUFFICIENT,
                 cost_usd=result.cost_usd,
@@ -207,9 +211,9 @@ def run_task(executor: Executor) -> tuple[float, float]:
             )
 
     summary = session.summary()
-    print(f"\n  tiers used:      {summary['tier_history']}")
-    print(f"  escalations:     {summary['escalations']}")
-    print(f"  de-escalations:  {summary['de_escalations']}")
+    say(f"\n  tiers used:      {summary['tier_history']}")
+    say(f"  escalations:     {summary['escalations']}")
+    say(f"  de-escalations:  {summary['de_escalations']}")
 
     all_high = len(TASK) * ILLUSTRATIVE_STEP_COST[Tier.HIGH]
     return spent, all_high
@@ -221,6 +225,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                         help="make real Anthropic calls (needs the SDK and ANTHROPIC_API_KEY)")
     parser.add_argument("--tune", action="store_true",
                         help="run the outer loop over the log afterwards")
+    parser.add_argument("--runs", type=int, default=6,
+                        help="repeats before tuning (default: 6) -- one task is not evidence")
     args = parser.parse_args(argv)
 
     if args.live:
@@ -239,13 +245,19 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"  (figures are placeholders -- substitute your own per-step costs)")
 
     if args.tune:
-        print("\nOuter loop:")
-        before = Thresholds.load()
-        result = ThresholdTuner(min_samples=4).tune(LOG)
-        print(f"  {result.direction or result.reason}")
-        print(f"  samples={result.samples} failure_rate={result.failure_rate}")
-        print(f"  cuts {before.low_medium:.2f}/{before.medium_high:.2f}"
-              f" -> {result.after['low_medium']:.2f}/{result.after['medium_high']:.2f}")
+        # One task is four outcomes split across three tiers -- nowhere near
+        # enough for any single boundary to have earned a move. Repeat first.
+        for _ in range(max(args.runs - 1, 0)):
+            run_task(executor, quiet=True)
+
+        print(f"\nOuter loop (after {args.runs} runs of the task):")
+        result = ThresholdTuner(min_samples=5).tune(LOG)
+        print(f"  {result.reason}")
+        for adj in result.adjustments:
+            arrow = f"{adj.before:.2f} -> {adj.after:.2f}"
+            rate = "n/a" if adj.failure_rate is None else f"{adj.failure_rate:.2f}"
+            print(f"    {adj.name:<13} {adj.evidence:<26} n={adj.samples:<3} "
+                  f"fail={rate:<5} {arrow:<14} {adj.direction}")
 
     print(f"\n  decision log: {LOG}")
     return 0

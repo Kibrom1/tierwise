@@ -155,13 +155,26 @@ tierwise thresholds                   # what is in force right now
 ```
 
 ```
-tuner: tightened (failure rate above target -- routing higher)
-  samples: 34  failure_rate: 0.8824
-  before: {'low_medium': 0.30, 'medium_high': 0.70, 'llm_fallback': 0.50}
-  after:  {'low_medium': 0.27, 'medium_high': 0.67, 'llm_fallback': 0.53}
+thresholds adjusted from observed outcomes
+  low_medium    tier=low                   n=12  fail=0.00  0.30 -> 0.33   relaxed
+  medium_high   tier=medium                n=6   fail=1.00  0.70 -> 0.67   tightened
+  llm_fallback  source=heuristic, tier<high n=18  fail=0.33  0.50 -> 0.53   tightened
 ```
 
-Two properties make this a loop rather than a report:
+**Each cut moves on the failures of the tier it governs.** Above, work routed
+`low` never failed and work routed `medium` always did, so the two cuts move in
+opposite directions from their own evidence. Tuning both on one aggregate rate
+would push medium-tier work to the top tier on the strength of failures that
+happened somewhere else entirely. Failures at `high` move nothing: there is no
+higher tier, so they are not a routing problem.
+
+**Evidence is spent when it is acted on.** A watermark (`tuned_through`) rides
+along in the thresholds file, and only outcomes newer than it count. Re-running
+against an unchanged log adjusts nothing and says so, which is what makes the
+tuner safe on a cron — without it, every run would step again on the same
+history and a single bad week would walk routing to the floor.
+
+Two further properties make this a loop rather than a report:
 
 - **Outcomes persist.** `mark_outcome` appends a separate `task_outcome` event
   keyed to the decision id, rather than mutating an event in memory. A tuner
@@ -178,9 +191,10 @@ relaxes only on their sustained absence, which is the sole evidence that the
 cheap side has room.
 
 Because tuning auto-applies, the guardrails are load-bearing: a minimum sample
-count before acting, one bounded step per run (0.03), a hard floor and ceiling,
-an enforced gap between the tier cuts, and a recorded `threshold_tuning` event
-for every change. Outcomes from engineer hints, `min_tier` floors, and
+count **per boundary**, one bounded step per run (0.03), a hard floor and
+ceiling, an enforced gap between the tier cuts, a watermark so no outcome is
+counted twice, an optional `window` for when routing quality is not stationary,
+and a recorded `threshold_tuning` event for every change. Outcomes from engineer hints, `min_tier` floors, and
 escalation retries are excluded from the failure rate — none of those were the
 classifier's call to get wrong. `Outcome.ERROR` is excluded too.
 
@@ -348,7 +362,7 @@ src/tierwise/
   tuner.py           ThresholdTuner — the outer loop
   cli.py             route / explain / models / thresholds / tune
 examples/            runnable agent-loop walkthrough
-tests/               109 tests, no network
+tests/               118 tests, no network
 ```
 
 ## Development
