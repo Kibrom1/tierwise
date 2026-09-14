@@ -84,7 +84,9 @@
   h1, h2, h3, h4 { font-family: var(--display); font-weight: 700; text-wrap: balance; margin: 0; line-height: 1.12; }
   p, ul, ol { margin: 0; }
   ul { padding-inline-start: 1.1rem; }
-  li + li { margin-block-start: 6px; }
+  /* Prose lists only. Unscoped, this pushed every nav item after the first
+     down 6px, so the first tab sat higher than the rest of the row. */
+  section li + li { margin-block-start: 6px; }
 
   a { color: inherit; text-decoration-color: var(--t-med); text-underline-offset: 3px; }
   a:hover { text-decoration-thickness: 2px; }
@@ -121,9 +123,10 @@
     margin-block-start: 22px;
   }
   nav.sections ol {
-    display: flex; gap: 4px; margin: 0; padding: 0; list-style: none;
-    overflow-x: auto; scrollbar-width: thin;
+    display: flex; align-items: stretch; gap: 4px; margin: 0; padding: 0;
+    list-style: none; overflow-x: auto; scrollbar-width: thin;
   }
+  nav.sections li { margin: 0; display: flex; }
   nav.sections a {
     display: block; white-space: nowrap; text-decoration: none;
     font-family: var(--mono); font-size: .75rem; color: var(--ink-soft);
