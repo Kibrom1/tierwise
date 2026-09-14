@@ -32,6 +32,7 @@ from .diff import (
 )
 from .mapping import DEFAULT_MODELS, ModelMap
 from .models import Classification, RoutingDecision, Source, TaskSignals, Tier
+from .replay import ReplayResult, ReplayRow, replay
 from .router import Router, RouterConfig
 from .runner import (
     Attempt,
@@ -87,6 +88,9 @@ __all__ = [
     "parse_name_status",
     "parse_numstat",
     "read_events",
+    "replay",
+    "ReplayResult",
+    "ReplayRow",
     "Router",
     "RouterConfig",
     "RoutingDecision",

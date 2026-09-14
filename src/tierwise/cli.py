@@ -13,6 +13,7 @@ from .mapping import ModelMap
 from .models import TaskSignals, Tier
 from .router import Router, RouterConfig
 from .telemetry import JsonlSink, NullSink, StderrSink
+from .replay import replay
 from .thresholds import Thresholds, resolve_path
 from .tuner import ThresholdTuner
 
@@ -98,6 +99,16 @@ def _build_parser() -> argparse.ArgumentParser:
                            "failure rate implied by its tiers' observed costs")
     tune.add_argument("--window", type=int, default=None,
                       help="consider only the most recent N outcomes")
+
+    rep = subparsers.add_parser(
+        "replay", help="re-cut a decision log at different thresholds, without applying them"
+    )
+    rep.add_argument("log", help="JSONL decision log written by --telemetry")
+    rep.add_argument("--low-medium", type=float, default=None,
+                     help="candidate low/medium cut (default: the one in force)")
+    rep.add_argument("--medium-high", type=float, default=None,
+                     help="candidate medium/high cut (default: the one in force)")
+    rep.add_argument("--json", action="store_true", help="emit the full result as JSON")
     return parser
 
 
@@ -181,6 +192,50 @@ def _cmd_thresholds(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_replay(args: argparse.Namespace) -> int:
+    candidate = Thresholds.load()
+    if args.low_medium is not None:
+        candidate.low_medium = args.low_medium
+    if args.medium_high is not None:
+        candidate.medium_high = args.medium_high
+    candidate.validate()
+
+    result = replay(args.log, thresholds=candidate)
+    if args.json:
+        print(json.dumps(result.to_dict(), indent=2))
+        return 0
+
+    print(f"cuts {candidate.low_medium:.2f} / {candidate.medium_high:.2f}"
+          f"   {result.considered} decisions replayed, {result.changed} would change tier")
+    print()
+    for tier in Tier:
+        before = result.tier_before.get(tier.value, 0)
+        after = result.tier_after.get(tier.value, 0)
+        move = after - before
+        arrow = f"{move:+d}" if move else "  0"
+        print(f"  {tier.value:<7} {before:>4} -> {after:>4}   {arrow}")
+    print()
+    if result.failures_total:
+        print(f"  of {result.failures_total} failed steps, "
+              f"{result.failures_routed_higher} would have been routed higher")
+    if result.successes_total:
+        print(f"  of {result.successes_total} successful steps, "
+              f"{result.successes_routed_lower} would have been routed lower")
+    if result.estimated_cost_delta is not None:
+        print(f"  estimated spend change: {result.estimated_cost_delta:+.4f} "
+              f"(at the per-tier costs in this log)")
+    skipped = (result.skipped_not_from_cuts + result.skipped_classifier
+               + result.skipped_no_signals)
+    if skipped:
+        print(f"\n  {skipped} decisions not replayable: "
+              f"{result.skipped_not_from_cuts} not decided by the cuts, "
+              f"{result.skipped_classifier} decided by the classifier, "
+              f"{result.skipped_no_signals} missing signals")
+    print("\n  Rerouted steps were never actually run at the new tier -- this says "
+          "where they would\n  have gone, not that they would have succeeded there.")
+    return 0
+
+
 def _cmd_tune(args: argparse.Namespace) -> int:
     tuner = ThresholdTuner(
         step=args.step,
@@ -202,6 +257,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "models": _cmd_models,
         "thresholds": _cmd_thresholds,
         "tune": _cmd_tune,
+        "replay": _cmd_replay,
     }
     return handlers[args.command](args)
 

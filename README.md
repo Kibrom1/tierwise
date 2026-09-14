@@ -189,7 +189,27 @@ outcome reported for it, and moves the cuts those decisions came from.
 tierwise tune loop.jsonl              # apply and persist
 tierwise tune loop.jsonl --dry-run    # report the proposed change only
 tierwise thresholds                   # what is in force right now
+tierwise replay loop.jsonl --low-medium 0.20 --medium-high 0.50
 ```
+
+`replay` answers the question that makes auto-applied tuning safe to trust:
+what would these cuts have done to work you have already routed?
+
+```
+cuts 0.20 / 0.50   4 decisions replayed, 2 would change tier
+
+  low        2 ->    2     0
+  medium     2 ->    0   -2
+  high       0 ->    2   +2
+
+  of 1 failed steps, 1 would have been routed higher
+  estimated spend change: +0.1500 (at the per-tier costs in this log)
+```
+
+The trade in one view. Note what it does *not* claim: those steps were never
+run at the new tier, so this says where they would have gone, not that they
+would have succeeded there. Decisions the classifier made are excluded rather
+than guessed at — its verdict is not in the log.
 
 ```
 thresholds adjusted from observed outcomes
@@ -477,10 +497,11 @@ src/tierwise/
   thresholds.py      the tunable cuts, and where they persist
   tuner.py           ThresholdTuner — the outer loop
   diff.py            git diff -> TaskSignals
-  cli.py             route / explain / models / thresholds / tune
+  replay.py          re-cut a log at candidate thresholds
+  cli.py             route / explain / models / thresholds / tune / replay
 docs/                the landing page (single self-contained index.html)
 examples/            runnable agent-loop walkthrough
-tests/               192 tests, no network
+tests/               208 tests, no network
 ```
 
 ## Development
