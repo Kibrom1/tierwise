@@ -118,3 +118,42 @@ def test_invalid_signals_rejected():
         TaskSignals(file_count=-1)
     with pytest.raises(ValueError):
         TaskSignals(lines_changed=-3)
+
+
+# -- evidence: no signals is not the same as a simple task ---------------------
+
+from tierwise import Router, TaskSignals as _Signals, Tier as _Tier  # noqa: E402
+from tierwise.heuristics import classify as _classify, has_evidence  # noqa: E402
+
+
+def test_description_only_is_not_confident():
+    """Score 0.0 used to read as confidence 1.00 -- certainty from nothing."""
+    signals = _Signals(description="migrate billing to a new payment provider")
+    assert not has_evidence(signals)
+    classification, _ = _classify(signals)
+    assert classification.confidence == 0.0
+    assert "description only" in classification.rationale
+
+
+def test_description_only_goes_to_the_classifier():
+    decision = Router().route(_Signals(description="migrate billing to a new payment provider"))
+    assert decision.source.value == "llm"
+    # The offline stub resolves upward rather than guessing cheap.
+    assert decision.tier is not _Tier.LOW
+
+
+@pytest.mark.parametrize("signals", [
+    _Signals(category="typo"),
+    _Signals(lines_changed=2),
+    _Signals(file_count=4),
+    _Signals(requires_context=True),
+    _Signals(ambiguity=0.2),
+    _Signals(is_greenfield=True),
+    _Signals(metadata={"measured": True}),
+])
+def test_any_real_signal_counts_as_evidence(signals):
+    assert has_evidence(signals)
+
+
+def test_an_unknown_category_is_not_evidence():
+    assert not has_evidence(_Signals(category="billing"))

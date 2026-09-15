@@ -269,17 +269,22 @@ class ThresholdTuner:
         high_target, high_target_source = self._target_for("medium", "high", cost_by_tier)
 
         # Each cut answers to the evidence from the tier it governs, plus any
-        # downgrades from the tier above it.
+        # downgrades from the tier above it -- and only to decisions the cuts
+        # actually made. A tier the classifier (or the stub) chose, or one a
+        # cache hold kept, says nothing about where a cut sits; counting it
+        # let classifier failures at medium tighten medium_high and push
+        # correctly-scored medium work to the top tier.
+        from_cuts = [r for r in normal if r["source"] == "heuristic"]
         adjustments = [
             self._decide(
                 "low_medium", "tier=low", current.low_medium,
-                [r for r in normal if r["tier"] == "low"],
+                [r for r in from_cuts if r["tier"] == "low"],
                 [r for r in explored if r["explored_from"] == "medium"],
                 low_target, low_target_source,
             ),
             self._decide(
                 "medium_high", "tier=medium", current.medium_high,
-                [r for r in normal if r["tier"] == "medium"],
+                [r for r in from_cuts if r["tier"] == "medium"],
                 [r for r in explored if r["explored_from"] == "high"],
                 high_target, high_target_source,
             ),
@@ -289,8 +294,7 @@ class ThresholdTuner:
             # have produced a higher route anyway.
             self._decide(
                 "llm_fallback", "source=heuristic, tier<high", current.llm_fallback,
-                [r for r in normal
-                 if r["source"] == "heuristic" and r["tier"] != "high"],
+                [r for r in from_cuts if r["tier"] != "high"],
                 [], self.target_failure_rate, "fixed", invert=True,
             ),
         ]

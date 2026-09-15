@@ -314,7 +314,13 @@ Precedence, highest first:
 2. **Heuristic scorer**, when its confidence clears the threshold (default 0.5).
    No network call, sub-millisecond.
 3. **LLM classifier**, for the ambiguous middle only — scores parked near a tier
-   boundary, where the heuristic genuinely cannot tell.
+   boundary, where the heuristic genuinely cannot tell — and for tasks that
+   arrive with **no signals at all**. The scorer never reads `description`, so a
+   description-only task has nothing to score; it gets confidence 0 and goes to
+   the classifier, which does read it. (Offline, the stub resolves such a task
+   one tier *up* from low rather than guessing cheap.) Signals built from a diff
+   are marked `metadata["measured"]`, so a genuinely empty diff still counts as
+   evidence of a small change.
 
 A `min_tier` floor is applied last, so a task can be pinned above whatever the
 classifiers concluded.

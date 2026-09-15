@@ -317,3 +317,26 @@ def test_dry_run_reports_without_persisting(log):
     result = ThresholdTuner(min_samples=20).tune(log, apply=False)
     assert result.adjusted is True
     assert Thresholds.load().version == 0
+
+
+# -- attribution: a cut answers only for decisions it made --------------------
+
+FAIL_MED_LLM = ("insufficient", "medium", 1, "llm")
+FAIL_LOW_HOLD = ("insufficient", "low", 1, "cache_hold")
+
+
+def test_classifier_failures_do_not_move_the_cuts(log):
+    """The classifier chose these tiers, not the cuts.
+
+    Counting them let a stub classifier's failures at medium tighten
+    medium_high, which pushed correctly-scored medium work to the top tier.
+    """
+    write_log(log, [FAIL_MED_LLM] * 30 + [FAIL_LOW_HOLD] * 30)
+    before = Thresholds()
+    result = ThresholdTuner(min_samples=20).tune(log)
+    cuts = by_name(result)
+
+    assert result.after["low_medium"] == pytest.approx(before.low_medium)
+    assert result.after["medium_high"] == pytest.approx(before.medium_high)
+    assert cuts["low_medium"].samples == 0
+    assert cuts["medium_high"].samples == 0

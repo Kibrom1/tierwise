@@ -88,6 +88,32 @@ def score_task(signals: TaskSignals) -> Score:
     return Score(value=normalized, contributions=contributions)
 
 
+def has_evidence(signals: TaskSignals) -> bool:
+    """Did the caller tell the scorer anything beyond a free-text description?
+
+    Every structural signal defaults to its "simplest" value, so a task that
+    arrives with nothing but a description scores 0.0 -- and 0.0 sits as far
+    from a cut as a score can, which the distance-based confidence reads as
+    certainty. That made the least-informed decision the most confident one:
+    "migrate billing to a new payment provider" went to the cheapest tier at
+    confidence 1.00, and the classifier -- the only layer that reads the
+    description -- was never asked. A recognised category counts as evidence,
+    if weak; an unrecognised one does not.
+    """
+    if signals.metadata.get("measured"):
+        return True     # zeros read off a real diff are a measurement
+    if (signals.category or "").strip().lower() in CATEGORY_PRIORS:
+        return True
+    return bool(
+        signals.file_count != 1
+        or signals.lines_changed
+        or signals.dependency_depth
+        or signals.requires_context
+        or signals.ambiguity
+        or signals.is_greenfield
+    )
+
+
 def tier_for_score(value: float, thresholds: Optional[Thresholds] = None) -> Tier:
     t = thresholds or DEFAULT_THRESHOLDS
     if value < t.low_medium:
@@ -122,7 +148,13 @@ def classify(
     confidence = confidence_for_score(score.value, t)
 
     drivers = score.top_drivers()
-    if drivers:
+    if not has_evidence(signals):
+        # Nothing to be confident about. Zero confidence hands the call to the
+        # classifier, which reads the description; the heuristic tier stays in
+        # the rationale for the record.
+        confidence = 0.0
+        driver_text = "no signals supplied, description only"
+    elif drivers:
         driver_text = ", ".join(f"{name}={weight:+.2f}" for name, weight in drivers)
     else:
         driver_text = "no strong signals"

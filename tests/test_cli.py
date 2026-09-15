@@ -69,3 +69,20 @@ def test_models_command_marks_defaults_as_defaults(capsys):
 def test_missing_subcommand_exits(capsys):
     with pytest.raises(SystemExit):
         main([])
+
+
+def test_route_warns_when_only_a_description_is_given(capsys):
+    assert main(["route", "migrate billing to a new payment provider"]) == 0
+    captured = capsys.readouterr()
+    assert "no signals given" in captured.err
+    assert "tier:" in captured.out
+
+
+def test_route_warns_on_an_unknown_category(capsys):
+    assert main(["route", "x", "--category", "billing", "--lines", "5"]) == 0
+    assert "unknown category 'billing'" in capsys.readouterr().err
+
+
+def test_model_only_output_stays_clean(capsys):
+    assert main(["route", "just words", "--model-only"]) == 0
+    assert capsys.readouterr().err == ""

@@ -163,7 +163,10 @@ def signals_from_stat(
         is_greenfield=is_greenfield,
         tier_hint=tier_hint,
         min_tier=min_tier,
-        metadata={"paths": list(stat.paths), "binary_files": stat.binary_files},
+        # "measured": these zeros came from a real diff, so they are evidence of
+        # a small change rather than an absence of signals.
+        metadata={"paths": list(stat.paths), "binary_files": stat.binary_files,
+                  "measured": True},
     )
 
 

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from typing import Optional, Sequence
 
 from . import __version__
+from .heuristics import CATEGORY_PRIORS, has_evidence
 from .heuristics import classify as heuristic_classify
 from .mapping import ModelMap
 from .models import TaskSignals, Tier
@@ -52,6 +54,27 @@ def _signals_from_args(args: argparse.Namespace) -> TaskSignals:
         tier_hint=Tier(args.tier_hint) if args.tier_hint else None,
         min_tier=Tier(args.min_tier) if args.min_tier else None,
     )
+
+
+def _warn_thin_signals(signals: TaskSignals) -> None:
+    """Say so when the description is doing all the work.
+
+    The heuristic scorer never reads the description, so a plain-language task
+    with no flags has nothing to score. It is routed by the classifier instead
+    -- which, unless a live one is configured, can only guess.
+    """
+    category = (signals.category or "").strip().lower()
+    if category and category not in CATEGORY_PRIORS:
+        known = ", ".join(sorted(CATEGORY_PRIORS))
+        print(f"note: unknown category {signals.category!r} is ignored. Known: {known}",
+              file=sys.stderr)
+    if not has_evidence(signals):
+        live = os.environ.get("TIERWISE_CLASSIFIER", "stub").strip().lower() in {"anthropic", "live"}
+        how = ("the live classifier will read the description" if live else
+               "with no live classifier this is a cautious guess; set "
+               "TIERWISE_CLASSIFIER=anthropic to classify from the description")
+        print("note: no signals given (--files, --lines, --depth, --needs-context, "
+              f"--ambiguity, --category); {how}", file=sys.stderr)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -128,7 +151,10 @@ def _make_router(args: argparse.Namespace) -> Router:
 
 
 def _cmd_route(args: argparse.Namespace) -> int:
-    decision = _make_router(args).route(_signals_from_args(args))
+    signals = _signals_from_args(args)
+    if not args.model_only:
+        _warn_thin_signals(signals)
+    decision = _make_router(args).route(signals)
     if args.model_only:
         print(decision.model)
     elif args.json:
@@ -144,6 +170,7 @@ def _cmd_route(args: argparse.Namespace) -> int:
 
 def _cmd_explain(args: argparse.Namespace) -> int:
     signals = _signals_from_args(args)
+    _warn_thin_signals(signals)
     classification, score = heuristic_classify(signals)
     if args.json:
         print(json.dumps({
