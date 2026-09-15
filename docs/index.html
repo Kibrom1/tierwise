@@ -231,6 +231,30 @@
   .kv dd { margin: 0; }
   .path { font-family: var(--mono); font-size: .6875rem; line-height: 1.5; padding: 8px 10px; border-radius: 2px; background: var(--t-med-bg); color: var(--t-med); }
   .path.is-fallback { background: var(--signal-bg); color: var(--signal); }
+  .modes { display: flex; flex-wrap: wrap; gap: 6px; }
+  .modes label {
+    font-family: var(--mono); font-size: .6875rem; cursor: pointer;
+    border: 1px solid var(--rule); border-radius: 2px; padding: 6px 10px;
+    color: var(--ink-soft);
+  }
+  .modes label:has(input:checked) { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .modes input { position: absolute; opacity: 0; pointer-events: none; }
+
+  .outcome { display: flex; flex-direction: column; gap: 14px; }
+  .verdict-line {
+    font-family: var(--display); font-weight: 700; font-size: 1.5rem;
+    line-height: 1.15; letter-spacing: -.01em;
+  }
+  .verdict-line.good { color: var(--t-low); }
+  .verdict-line.bad { color: var(--signal); }
+  .bill { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 12px; }
+  .bill div {
+    border: 1px solid var(--rule); border-radius: 2px; padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .bill dt, .bill .k { font-family: var(--mono); font-size: .625rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); }
+  .bill .v { font-family: var(--mono); font-size: 1.0625rem; }
+
   .presets { display: flex; flex-wrap: wrap; gap: 6px; }
   .preset {
     font-family: var(--mono); font-size: .6875rem; background: none; color: var(--ink-soft);
@@ -332,6 +356,7 @@
     <ol>
       <li><a href="#why">Why</a></li>
       <li><a href="#switching">Switching cost</a></li>
+      <li><a href="#calculator">Will it pay?</a></li>
       <li><a href="#scoring">Scoring</a></li>
       <li><a href="#loops">The two loops</a></li>
       <li><a href="#control">Control</a></li>
@@ -537,6 +562,70 @@ Router().route(
                           incumbent=Tier.HIGH),
 )  <span class="c"># -> high, source=cache_hold</span></pre>
     </div>
+  </section>
+
+  <!-- ---------------------------------------------------------------- -->
+
+  <section id="calculator">
+    <div class="sec-head col">
+      <span class="eyebrow">before you integrate anything</span>
+      <h2>Will it save you anything?</h2>
+      <p class="note">
+        Routing does not pay for every workload, and the honest answer sometimes is no.
+        Four numbers off your bill decide it — no install, no code.
+      </p>
+    </div>
+
+    <div class="scale-panel">
+      <div class="scorer">
+        <div class="controls">
+          <div class="modes" role="radiogroup" aria-label="Workload shape">
+            <label><input type="radio" name="mode" id="m-fresh" value="fresh" checked> independent tasks</label>
+            <label><input type="radio" name="mode" id="m-cached" value="cached"> long cached sessions</label>
+          </div>
+          <div class="field">
+            <label for="c-calls">calls per month</label>
+            <input type="range" id="c-calls" min="500" max="100000" step="500" value="10000">
+            <output class="num" id="o-calls">10,000</output>
+          </div>
+          <div class="field">
+            <label for="c-ctx">context per call</label>
+            <input type="range" id="c-ctx" min="1000" max="200000" step="1000" value="4000">
+            <output class="num" id="o-ctx">4,000</output>
+          </div>
+          <div class="field">
+            <label for="c-out">output per call</label>
+            <input type="range" id="c-out" min="100" max="8000" step="100" value="800">
+            <output class="num" id="o-out">800</output>
+          </div>
+          <div class="field">
+            <label for="c-share">simple enough to drop</label>
+            <input type="range" id="c-share" min="0" max="100" step="5" value="50">
+            <output class="num" id="o-share">50%</output>
+          </div>
+          <p class="note">
+            &ldquo;Simple enough to drop&rdquo; is the share of calls a cheaper model could
+            handle. If you have no idea, 50% is optimistic but not absurd for coding work.
+          </p>
+        </div>
+
+        <div class="outcome" role="status" aria-live="polite" aria-atomic="true">
+          <div class="verdict-line good" id="c-verdict">Saves 40%</div>
+          <div class="bill">
+            <div><span class="k">now</span><span class="v num" id="c-now">$400</span></div>
+            <div><span class="k">routed</span><span class="v num" id="c-routed">$240</span></div>
+          </div>
+          <p class="note" id="c-detail">Every call on the top tier, against half of them dropped a tier.</p>
+        </div>
+      </div>
+    </div>
+
+    <p class="note col" style="margin-block-start: 18px;">
+      Prices are Anthropic&rsquo;s published rates (Haiku $1/$5, Sonnet $2/$10, Opus $5/$25 per
+      million tokens, cache read 0.1&times;, cache write 1.25&times;), checked February 2026. This
+      compares the top tier against the cheapest one, so it is the optimistic end of the range —
+      a real mix lands between.
+    </p>
   </section>
 
   <!-- ---------------------------------------------------------------- -->
@@ -1221,6 +1310,93 @@ result.ok, result.tier, result.tiers, result.total_cost_usd</pre>
   });
 
   load(PRESETS[4]);
+
+  // ---- "will it pay?" ----------------------------------------------------
+  // Same prices and multipliers as tierwise.pricing.
+  var TOP = { input: 5, output: 25 }, CHEAP = { input: 1, output: 5 };
+  var CACHE_READ = 0.10, CACHE_WRITE = 1.25, M = 1e6;
+
+  var calc = {
+    calls: el("c-calls"), ctx: el("c-ctx"), out: el("c-out"), share: el("c-share"),
+    fresh: el("m-fresh"), cached: el("m-cached")
+  };
+
+  function money(value) {
+    if (value >= 1000) return "$" + Math.round(value).toLocaleString();
+    if (value >= 10) return "$" + value.toFixed(0);
+    return "$" + value.toFixed(2);
+  }
+
+  function priceCalls() {
+    var cached = calc.cached.checked;
+    var context = +calc.ctx.value, output = +calc.out.value;
+    var stay, moved;
+
+    if (cached) {
+      // The incumbent reads its warm cache; arriving anywhere else writes one.
+      stay = (context * TOP.input * CACHE_READ + output * TOP.output) / M;
+      moved = (context * CHEAP.input * CACHE_WRITE + output * CHEAP.output) / M;
+    } else {
+      stay = (context * TOP.input + output * TOP.output) / M;
+      moved = (context * CHEAP.input + output * CHEAP.output) / M;
+    }
+    return { stay: stay, moved: moved, cached: cached };
+  }
+
+  function renderCalc() {
+    var calls = +calc.calls.value, share = +calc.share.value / 100;
+    var p = priceCalls();
+
+    el("o-calls").textContent = calls.toLocaleString();
+    el("o-ctx").textContent = (+calc.ctx.value).toLocaleString();
+    el("o-out").textContent = (+calc.out.value).toLocaleString();
+    el("o-share").textContent = calc.share.value + "%";
+
+    var now = calls * p.stay;
+    var routed = calls * ((1 - share) * p.stay + share * p.moved);
+    var change = now > 0 ? (now - routed) / now * 100 : 0;
+
+    el("c-now").textContent = money(now);
+    el("c-routed").textContent = money(routed);
+
+    var verdict = el("c-verdict");
+    var detail = el("c-detail");
+
+    if (share === 0) {
+      verdict.className = "verdict-line";
+      verdict.textContent = "Nothing to route";
+      detail.textContent = "No call is simple enough to move, so there is nothing for a router to do.";
+    } else if (change > 1) {
+      verdict.className = "verdict-line good";
+      verdict.textContent = "Saves " + change.toFixed(0) + "%";
+      detail.textContent = "About " + money(now - routed) + " a month, before any escalations "
+        + "that send a step back up.";
+    } else if (change < -1) {
+      verdict.className = "verdict-line bad";
+      verdict.textContent = "Costs " + Math.abs(change).toFixed(0) + "% more";
+      detail.textContent = "Dropping a tier forfeits the warm cache, and at this context size "
+        + "the cache write costs more than the cheaper model saves. Routing would lose you "
+        + money(routed - now) + " a month.";
+    } else {
+      verdict.className = "verdict-line";
+      verdict.textContent = "Roughly a wash";
+      detail.textContent = "The saving and the switching cost cancel out at this shape. "
+        + "Not worth the integration.";
+    }
+
+    if (p.cached && change < -1) {
+      var breakeven = (+calc.ctx.value) * (CHEAP.input * CACHE_WRITE - TOP.input * CACHE_READ)
+        / (TOP.output - CHEAP.output);
+      detail.textContent += " Output would have to reach about "
+        + Math.round(breakeven).toLocaleString() + " tokens per call before it pays.";
+    }
+  }
+
+  Object.keys(calc).forEach(function (key) {
+    calc[key].addEventListener("input", renderCalc);
+    calc[key].addEventListener("change", renderCalc);
+  });
+  renderCalc();
 
   // Mark the section currently in view in the nav.
   var links = Array.prototype.slice.call(document.querySelectorAll("nav.sections a"));
