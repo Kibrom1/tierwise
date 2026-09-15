@@ -650,8 +650,11 @@ Router().route(
             anything inferred.</li>
           <li><strong>The heuristic scorer</strong>, when its confidence clears the threshold. No
             network call, sub-millisecond.</li>
-          <li><strong>An LLM classifier</strong>, for the ambiguous middle only &mdash; scores sitting
-            near a cut, where the heuristic genuinely cannot tell.</li>
+          <li><strong>An LLM classifier</strong>, for the ambiguous middle &mdash; scores sitting
+            near a cut, where the heuristic genuinely cannot tell &mdash; and for tasks that arrive
+            with no signals at all. The scorer never reads the description, so a description on its
+            own has nothing to score; rather than call that &ldquo;simple&rdquo; with full
+            confidence, it hands the task to the classifier, which does read it.</li>
         </ol>
         <p class="note">A <code>min_tier</code> floor is applied last, so a task can be pinned above
         whatever the classifiers concluded.</p>
@@ -994,6 +997,7 @@ result.ok, result.tier, result.tiers, result.total_cost_usd</pre>
               <tr><td class="w">tierwise models</td><td>tier &rarr; model, and where each name came from</td><td class="w">--json</td></tr>
               <tr><td class="w">tierwise thresholds</td><td>the cuts currently in force</td><td class="w">&mdash;</td></tr>
               <tr><td class="w">tierwise tune</td><td>retune thresholds from a decision log</td><td class="w">--dry-run, --rework-cost, --min-samples, --window</td></tr>
+              <tr><td class="w">tierwise replay</td><td>what different cuts would have done to a log, without applying them</td><td class="w">--low-medium, --medium-high, --json</td></tr>
             </tbody>
           </table>
         </div>
@@ -1160,7 +1164,7 @@ result.ok, result.tier, result.tiers, result.total_cost_usd</pre>
       <p class="note">Each of these is answered at length in the <a href="#faq">FAQ</a>.</p>
     </div>
     <div class="limits col">
-      <div class="limit"><span class="mark">01</span><p><b>It does not extract the signals.</b> Wrong signals in, wrong tier out.</p></div>
+      <div class="limit"><span class="mark">01</span><p><b>The scorer does not read the description.</b> Wrong signals in, wrong tier out; no signals at all and the task goes to the classifier &mdash; which, until you configure a live one, can only resolve upward.</p></div>
       <div class="limit"><span class="mark">02</span><p><b>It is only as good as your verifier.</b> A weak check teaches the tuner from noise.</p></div>
       <div class="limit"><span class="mark">03</span><p><b>The built-in model names are defaults, and they age.</b> Set your own before the first call.</p></div>
       <div class="limit"><span class="mark">04</span><p><b>Three tiers is the model.</b> Five meaningful sizes, or routing across providers by price, would be collapsing something finer.</p></div>
