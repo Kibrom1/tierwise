@@ -15,6 +15,7 @@ from .mapping import ModelMap
 from .models import TaskSignals, Tier
 from .router import Router, RouterConfig
 from .telemetry import JsonlSink, NullSink, StderrSink
+from .proxy import DEFAULT_PORT, DEFAULT_UPSTREAM, ENFORCE, SHADOW, ProxyRouter, serve
 from .replay import replay
 from .thresholds import Thresholds, resolve_path
 from .tuner import ThresholdTuner
@@ -132,6 +133,20 @@ def _build_parser() -> argparse.ArgumentParser:
     rep.add_argument("--medium-high", type=float, default=None,
                      help="candidate medium/high cut (default: the one in force)")
     rep.add_argument("--json", action="store_true", help="emit the full result as JSON")
+
+    srv = subparsers.add_parser(
+        "serve", help="run the routing proxy: point a client's base URL at it"
+    )
+    srv.add_argument("--port", type=int, default=DEFAULT_PORT,
+                     help=f"port to listen on (default: {DEFAULT_PORT})")
+    srv.add_argument("--upstream", default=DEFAULT_UPSTREAM,
+                     help=f"where to forward requests (default: {DEFAULT_UPSTREAM})")
+    srv.add_argument("--enforce", action="store_true",
+                     help="actually rewrite the model; without this it only reports "
+                          "what it would have done and forwards the request unchanged")
+    srv.add_argument("--telemetry", metavar="PATH", default="routing.jsonl",
+                     help="decision log to append to (default: routing.jsonl)")
+    srv.add_argument("--quiet", action="store_true", help="do not print each decision")
     return parser
 
 
@@ -219,6 +234,30 @@ def _cmd_thresholds(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_serve(args: argparse.Namespace) -> int:
+    mode = ENFORCE if args.enforce else SHADOW
+    router = Router(telemetry=JsonlSink(args.telemetry))
+    proxy = ProxyRouter(router=router, mode=mode)
+    server = serve(port=args.port, upstream=args.upstream, proxy=proxy,
+                   verbose=not args.quiet)
+
+    print(f"tierwise proxy on http://127.0.0.1:{args.port} -> {args.upstream}")
+    print(f"mode: {mode}" + ("" if args.enforce else
+          "  (reporting only; requests are forwarded unchanged)"))
+    print(f"log:  {args.telemetry}")
+    print()
+    print("  export ANTHROPIC_BASE_URL=http://127.0.0.1:%d" % args.port)
+    print()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nstopping")
+    finally:
+        server.shutdown()
+        server.server_close()
+    return 0
+
+
 def _cmd_replay(args: argparse.Namespace) -> int:
     candidate = Thresholds.load()
     if args.low_medium is not None:
@@ -285,6 +324,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "thresholds": _cmd_thresholds,
         "tune": _cmd_tune,
         "replay": _cmd_replay,
+        "serve": _cmd_serve,
     }
     return handlers[args.command](args)
 

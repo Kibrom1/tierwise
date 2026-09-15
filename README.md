@@ -19,6 +19,19 @@ request is. Category is kept only as a small tie-breaking prior.
 no build step, no dependencies. Deployed on Vercel; `vercel.json` points the
 project's output directory at `docs/`, so a push to `main` redeploys it.
 
+**Not writing the calls yourself?** `tierwise serve` puts the router in the
+request path, so any client that accepts a base URL is routed without a line of
+its code changing:
+
+```bash
+tierwise serve                                   # reports only; forwards unchanged
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
+```
+
+Shadow mode is the default: it decides what it *would* have routed, writes that
+to the decision log, and forwards your request untouched. `--enforce` makes it
+real once the log convinces you.
+
 **New here?** [USAGE.md](USAGE.md) is the step-by-step guide for wiring this
 into a Claude-based agent or CI, and `examples/claude_agent_loop.py` runs the
 whole loop offline in one command.
@@ -506,7 +519,8 @@ src/tierwise/
   tuner.py           ThresholdTuner — the outer loop
   diff.py            git diff -> TaskSignals
   replay.py          re-cut a log at candidate thresholds
-  cli.py             route / explain / models / thresholds / tune / replay
+  proxy.py           the routing proxy: re-route without touching client code
+  cli.py             route / explain / models / thresholds / tune / replay / serve
 docs/                the landing page (single self-contained index.html)
 examples/            runnable agent-loop walkthrough
 tests/               208 tests, no network

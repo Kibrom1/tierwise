@@ -42,6 +42,15 @@ from .pricing import (
     price_for,
     step_cost,
 )
+from .proxy import (
+    ENFORCE,
+    SHADOW,
+    ProxyPlan,
+    ProxyRouter,
+    conversation_key,
+    serve,
+    signals_from_payload,
+)
 from .replay import ReplayResult, ReplayRow, replay
 from .router import Router, RouterConfig
 from .runner import (
@@ -79,11 +88,13 @@ __all__ = [
     "Classification",
     "Classifier",
     "ConfigError",
+    "conversation_key",
     "CostFn",
     "default_classifier",
     "DEFAULT_MODELS",
     "DEFAULT_THRESHOLDS",
     "DiffStat",
+    "ENFORCE",
     "EscalationPolicy",
     "evaluate_switch",
     "Executor",
@@ -102,6 +113,8 @@ __all__ = [
     "parse_numstat",
     "price_for",
     "PRICES",
+    "ProxyPlan",
+    "ProxyRouter",
     "read_events",
     "replay",
     "ReplayResult",
@@ -112,8 +125,11 @@ __all__ = [
     "RoutingSession",
     "run_git_diff",
     "score_task",
+    "serve",
+    "SHADOW",
     "signals_from_diff",
     "signals_from_numstat",
+    "signals_from_payload",
     "signals_from_stat",
     "Source",
     "StderrSink",
