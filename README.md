@@ -321,6 +321,10 @@ classifier's call to get wrong. `Outcome.ERROR` is excluded too.
 
 ## How a single decision is made
 
+[ROUTING.md](ROUTING.md) is the complete flow, including the switching-cost
+hold and exploration stages that can still change the tier after this section
+ends. This is the short version.
+
 Precedence, highest first:
 
 1. **Engineer tier hint** (`tier_hint` / `--hint`). Engineers usually know when a

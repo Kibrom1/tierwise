@@ -269,6 +269,11 @@ tierwise explain --category refactor --files 4 --lines 150 --depth 2 --needs-con
 tierwise route "..." --category refactor --files 4 --lines 150 --json
 ```
 
+[ROUTING.md](ROUTING.md) walks through the whole decision flow end to end --
+scoring, the confidence gate that sends ambiguous or signal-less tasks to the
+classifier, the `min_tier` floor, the switching-cost hold, and exploration --
+if you want to know exactly why a given task landed where it did.
+
 ## Defining "it worked"
 
 `mark_outcome` is only as good as your definition of failure. Use a signal you
