@@ -30,7 +30,9 @@ export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
 
 Shadow mode is the default: it decides what it *would* have routed, writes that
 to the decision log, and forwards your request untouched. `--enforce` makes it
-real once the log convinces you.
+real once the log convinces you. [PERSONAL_SETUP.md](PERSONAL_SETUP.md) walks
+through the whole thing on a single account: shadow mode, reading the log,
+turning enforcement on, then tuning.
 
 **New here?** [USAGE.md](USAGE.md) is the step-by-step guide for wiring this
 into a Claude-based agent or CI, and `examples/claude_agent_loop.py` runs the

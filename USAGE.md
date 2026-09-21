@@ -4,6 +4,24 @@ A guide for someone already calling Claude to do engineering work — through th
 Anthropic SDK, a coding agent, or CI — who wants each step to run on the
 cheapest model that can actually do it.
 
+## Don't want to touch your code at all?
+
+Everything below wires `Router` / `RoutingSession` / `TaskRunner` into code you
+control. If that's not you — you just want your existing Claude CLI, agent or
+editor to route without editing anything — run the proxy instead:
+
+```bash
+tierwise serve --telemetry routing.jsonl
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
+```
+
+Shadow mode is the default: it logs what it *would* have routed and forwards
+every request unchanged, so nothing about your actual model usage moves until
+you add `--enforce`. [PERSONAL_SETUP.md](PERSONAL_SETUP.md) is the full walk-
+through — shadow mode, reading the decision log, turning enforcement on, then
+tuning — for one person on one account. Skip the rest of this file unless you
+want to route from inside your own code instead of in front of it.
+
 ## Install
 
 Not on PyPI. Two real options:

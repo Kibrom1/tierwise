@@ -46,7 +46,12 @@ def test_config_is_found_by_walking_up(tmp_path, monkeypatch):
 
 
 def test_no_config_anywhere_is_fine(tmp_path, monkeypatch):
+    # cwd matters here: ModelMap.resolve() with no explicit path walks up from
+    # it looking for tierwise.toml/.json. The repo root now legitimately has
+    # a tierwise.toml (see PERSONAL_SETUP.md), so this test has to run from
+    # somewhere that isn't inside the repo, not just unset the env override.
     monkeypatch.delenv("TIERWISE_CONFIG")
+    monkeypatch.chdir(tmp_path)
     assert load_config(tmp_path / "nope.json") == {}
     assert ModelMap.resolve().origin_for(Tier.LOW) == DEFAULT
 

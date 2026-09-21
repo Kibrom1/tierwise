@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<meta name="description" content="TierWise routes each step of a coding task to the cheapest model tier that can do it, then tunes its own thresholds from what happens next. Python, any provider, no runtime dependencies.">
+<meta name="description" content="TierWise routes each step of a coding task to the cheapest model tier that can do it, then tunes its own thresholds from what happens next. Run it as a drop-in proxy with no code changes, or as a Python library. Any provider, no runtime dependencies.">
 <title>TierWise</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=Newsreader:opsz,wght@6..72,380;6..72,500&family=JetBrains+Mono:wght@400;500;700&display=swap">
 <style>
@@ -349,7 +349,7 @@
 
   <header class="masthead">
     <div class="wordmark">Tier<span class="wise">Wise</span></div>
-    <div class="eyebrow">a library for complexity-aware model routing</div>
+    <div class="eyebrow">complexity-aware model routing &mdash; a drop-in proxy, or a library</div>
   </header>
 
   <nav class="sections" aria-label="Sections">
@@ -377,6 +377,10 @@
       dependency depth, how underspecified it is &mdash; and routes it to the cheapest model tier
       that can do it. <strong>One score, two cuts, three tiers.</strong> Drag the signals and watch
       where a task lands.
+    </p>
+    <p class="lede">
+      Two ways to run it: <code>tierwise serve</code> is a local proxy that routes any client
+      pointed at it with no code change, or call the library directly from your own agent loop.
     </p>
     <div class="cta-row">
       <a class="cta" href="#start">Get started</a>
@@ -914,10 +918,29 @@ high    claude-opus-5              [env]</pre>
   <section id="start">
     <div class="sec-head col">
       <span class="eyebrow">get started</span>
-      <h2>Three lines, then your existing call.</h2>
+      <h2>Point a base URL at it, or three lines of code.</h2>
     </div>
     <div class="stack-lg">
       <div class="stack col">
+        <h3>Not writing the calls yourself?</h3>
+        <p>
+          <code>tierwise serve</code> puts the router in the request path, so any client that
+          accepts a base URL &mdash; a CLI, an agent, an editor &mdash; is routed without a line of
+          its own code changing.
+        </p>
+        <pre><span class="c"># not on PyPI yet</span>
+pip install -e /path/to/tierwise
+tierwise serve --telemetry routing.jsonl          <span class="c"># reports only; forwards unchanged</span>
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8787</pre>
+        <p class="note">
+          Shadow mode is the default: it decides what it <em>would</em> have routed, writes that to
+          the decision log, and forwards the request untouched. <code>--enforce</code> makes it real
+          once the log convinces you.
+        </p>
+      </div>
+
+      <div class="stack col">
+        <h3>Calling the library directly</h3>
         <pre><span class="c"># not on PyPI yet</span>
 pip install -e /path/to/tierwise
 pip install <span class="s">"tierwise @ git+https://github.com/Kibrom1/tierwise.git"</span></pre>
@@ -998,6 +1021,7 @@ result.ok, result.tier, result.tiers, result.total_cost_usd</pre>
               <tr><td class="w">tierwise thresholds</td><td>the cuts currently in force</td><td class="w">&mdash;</td></tr>
               <tr><td class="w">tierwise tune</td><td>retune thresholds from a decision log</td><td class="w">--dry-run, --rework-cost, --min-samples, --window</td></tr>
               <tr><td class="w">tierwise replay</td><td>what different cuts would have done to a log, without applying them</td><td class="w">--low-medium, --medium-high, --json</td></tr>
+              <tr><td class="w">tierwise serve</td><td>run the routing proxy: point a client's base URL at it</td><td class="w">--port, --upstream, --enforce, --telemetry, --quiet</td></tr>
             </tbody>
           </table>
         </div>
