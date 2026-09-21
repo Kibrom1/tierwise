@@ -11,6 +11,26 @@ Source of truth: `src/tierwise/router.py` (orchestration),
 tunable cuts). If this doc and the code ever disagree, the code is right —
 open an issue or fix this file.
 
+## Surfaces that trigger this flow
+
+Every one of these ends up calling the same `Router.route()` — none of them
+have their own scoring logic:
+
+| Surface | What it's for |
+| --- | --- |
+| `tierwise route` (CLI) | one-off, scriptable, CI |
+| `Router` / `RoutingSession` (library) | wired into your own agent loop |
+| `tierwise serve` (proxy) | routes real API calls with zero per-call ceremony — the only surface where a decision here actually changes which model answers a request |
+| a Claude Skill (`tierwise-route`) | ask for a routing opinion in a Claude conversation in plain language, no CLI flags |
+
+That last one is worth being precise about: the Skill estimates `TaskSignals`
+from a plain-language description (a judgment call, not a measurement — see
+`signals_from_diff()` for the measured version) and then runs the real CLI, so
+the decision itself is made by this same flow. But it only ever *prints* a
+recommendation — a Skill has no way to change which model is generating the
+chat response it's running inside. Only the proxy changes what a request
+actually gets served by.
+
 ## The flow, in order
 
 ```
