@@ -17,7 +17,7 @@ from .router import Router, RouterConfig
 from .telemetry import JsonlSink, NullSink, StderrSink
 from .proxy import DEFAULT_PORT, DEFAULT_UPSTREAM, ENFORCE, SHADOW, ProxyRouter, serve
 from .replay import replay
-from .thresholds import Thresholds, resolve_path
+from .thresholds import QUALITY_FLOOR_PRESETS, Thresholds, resolve_path
 from .tuner import ThresholdTuner
 
 
@@ -103,7 +103,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "models", help="print the tier -> model mapping and where each name came from"
     )
     models.add_argument("--json", action="store_true", help="emit as JSON")
-    subparsers.add_parser("thresholds", help="print the thresholds currently in force")
+    thresh = subparsers.add_parser("thresholds", help="print the thresholds currently in force")
+    thresh.add_argument("--set-floor", choices=sorted(QUALITY_FLOOR_PRESETS),
+                        help="write a named quality-floor preset as the starting cuts "
+                             "and persist it (like --tune, but by name instead of evidence)")
 
     tune = subparsers.add_parser(
         "tune", help="close the outer loop: retune thresholds from a decision log"
@@ -225,8 +228,12 @@ def _cmd_models(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_thresholds(_args: argparse.Namespace) -> int:
-    thresholds = Thresholds.load()
+def _cmd_thresholds(args: argparse.Namespace) -> int:
+    if args.set_floor:
+        thresholds = Thresholds.from_quality_floor(args.set_floor)
+        thresholds.save(tuned_from=f"quality_floor:{args.set_floor}")
+    else:
+        thresholds = Thresholds.load()
     payload = thresholds.to_dict()
     payload["path"] = str(resolve_path())
     payload["tuned"] = thresholds.version > 0

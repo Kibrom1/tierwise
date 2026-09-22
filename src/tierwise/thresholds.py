@@ -73,13 +73,18 @@ class Thresholds:
         """Load tuned thresholds, falling back to defaults.
 
         A missing or unreadable file is not an error: routing must keep working
-        on a machine that has never been tuned.
+        on a machine that has never been tuned. If nothing has been tuned yet
+        and `tierwise.toml`/`tierwise.json` sets `quality_floor`, that preset is
+        the starting point instead of the hardcoded "balanced" cuts -- but only
+        ever the *starting* point: a `thresholds.json` that already exists (this
+        machine has been tuned) wins over the config file every time, because
+        the tuner's evidence is worth more than a preset guess.
         """
         target = resolve_path(path)
         try:
             raw = json.loads(target.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            return cls()
+            return cls._default_from_config()
 
         known = {f for f in cls().to_dict()}
         loaded = cls(**{k: v for k, v in raw.items() if k in known})
@@ -88,6 +93,21 @@ class Thresholds:
         except ValueError:
             return cls()
         return loaded
+
+    @classmethod
+    def _default_from_config(cls) -> "Thresholds":
+        """`cls()` unless `tierwise.toml`/`tierwise.json` names a quality_floor."""
+        from .config import load_config  # local import: avoid a load-time cycle
+
+        floor = load_config().get("quality_floor")
+        if not floor:
+            return cls()
+        try:
+            return cls.from_quality_floor(floor)
+        except ValueError:
+            # An unknown preset in config shouldn't break routing -- `models`
+            # commands surface bad config loudly elsewhere; here, fall back.
+            return cls()
 
     def save(self, path: str | Path | None = None, tuned_from: str | None = None) -> Path:
         self.validate()
@@ -105,6 +125,38 @@ class Thresholds:
 
     def copy(self) -> "Thresholds":
         return Thresholds(**self.to_dict())
+
+    @classmethod
+    def from_quality_floor(cls, name: str) -> "Thresholds":
+        """Build thresholds from a named preset instead of raw cut values.
+
+        Raises ValueError on an unknown name -- a typo'd preset should fail
+        loudly, not silently fall back to "balanced".
+        """
+        try:
+            low_medium, medium_high = QUALITY_FLOOR_PRESETS[name]
+        except KeyError:
+            known = ", ".join(sorted(QUALITY_FLOOR_PRESETS))
+            raise ValueError(f"unknown quality floor {name!r} (known: {known})") from None
+        thresholds = cls(low_medium=low_medium, medium_high=medium_high)
+        thresholds.validate()
+        return thresholds
+
+
+#: Named presets for the two complexity cuts, for callers who want a knob
+#: simpler than raw floats. These set `low_medium`/`medium_high` only --
+#: `boundary_margin` and `llm_fallback` stay at their defaults, and a tuned
+#: `thresholds.json` still wins once one exists (see `Thresholds.load`).
+#: "balanced" is exactly `Thresholds()`'s starting cuts.
+QUALITY_FLOOR_PRESETS: dict[str, tuple[float, float]] = {
+    "strict": (0.20, 0.55),
+    "balanced": (0.30, 0.70),
+    "lenient": (0.40, 0.80),
+}
+
+
+def quality_floor_names() -> tuple[str, ...]:
+    return tuple(QUALITY_FLOOR_PRESETS)
 
 
 DEFAULT_THRESHOLDS = Thresholds()

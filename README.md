@@ -34,6 +34,31 @@ real once the log convinces you. [PERSONAL_SETUP.md](PERSONAL_SETUP.md) walks
 through the whole thing on a single account: shadow mode, reading the log,
 turning enforcement on, then tuning.
 
+**Any client, not just Claude Code.** The proxy reads `model` + `messages` off
+the request body and forwards the path unchanged -- it never assumes the
+Anthropic Messages shape specifically, so an OpenAI-compatible client works
+the same way:
+
+```bash
+export OPENAI_BASE_URL=http://127.0.0.1:8787/v1      # Codex, or anything OpenAI-compatible
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8787       # Claude Code, Cursor's Anthropic mode
+```
+
+One `tierwise serve` instance routes whichever of these you point at it;
+run it once and switch clients freely. Per-client notes:
+
+- **Claude Code** -- `ANTHROPIC_BASE_URL`, as above.
+- **Codex CLI** -- set `OPENAI_BASE_URL` (or the equivalent in `~/.codex/config.toml`);
+  Codex's chat-completions payloads carry the same `model`/`messages` shape the
+  proxy already reads.
+- **Cursor** -- point its custom API base URL at the proxy under Settings ->
+  Models; works with either the Anthropic or OpenAI-compatible endpoint
+  depending on which provider Cursor is configured to hit.
+
+Whichever client, the tier-vs-model mapping still comes from `tierwise.toml`
+(or `TIERWISE_MODEL_LOW/_MEDIUM/_HIGH`), so route each client's tiers to model
+names that provider actually serves.
+
 **New here?** [USAGE.md](USAGE.md) is the step-by-step guide for wiring this
 into a Claude-based agent or CI, and `examples/claude_agent_loop.py` runs the
 whole loop offline in one command.
@@ -207,6 +232,26 @@ tierwise tune loop.jsonl --dry-run    # report the proposed change only
 tierwise thresholds                   # what is in force right now
 tierwise replay loop.jsonl --low-medium 0.20 --medium-high 0.50
 ```
+
+**Starting from a preset instead of raw numbers.** Tuning needs evidence you
+may not have yet. `--set-floor` sets the starting cuts from a name instead:
+
+```bash
+tierwise thresholds --set-floor strict     # routes more work up, tighter cuts
+tierwise thresholds --set-floor balanced   # the untuned defaults (0.30 / 0.70)
+tierwise thresholds --set-floor lenient    # routes more work down, looser cuts
+```
+
+or in `tierwise.toml`, so a fresh machine starts from the same floor before it
+has ever been tuned:
+
+```toml
+quality_floor = "strict"
+```
+
+Either way this only sets the *starting* point: once real outcomes tune the
+cuts, the tuned values win over the config file every time — a preset is a
+guess, evidence from `tierwise tune` is not.
 
 `replay` answers the question that makes auto-applied tuning safe to trust:
 what would these cuts have done to work you have already routed?

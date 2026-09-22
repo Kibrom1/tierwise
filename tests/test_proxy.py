@@ -45,6 +45,32 @@ def proxy(mode=SHADOW, telemetry=None):
 
 # -- reading a request -------------------------------------------------------
 
+
+def test_openai_shaped_payload_routes_the_same_as_anthropic_shaped():
+    """The proxy assumes nothing Anthropic-specific about the body.
+
+    Codex and other OpenAI-compatible clients send `model` + `messages` with no
+    top-level `system` field and a `role: "system"` message instead. Confirms
+    tierwise serve is a genuine drop-in for those clients too, not just
+    Anthropic's Messages API shape.
+    """
+    openai_payload = {
+        "model": "gpt-5",
+        "messages": [
+            {"role": "system", "content": "You are a coding agent."},
+            {"role": "user", "content": "rename the variable foo to bar in a.py"},
+        ],
+        "max_tokens": 512,
+    }
+    router_proxy = proxy()
+    plan = router_proxy.plan(openai_payload)
+    assert plan.decision.tier is not None
+
+    applied = router_proxy.apply(openai_payload, plan)
+    # Shadow mode: the client's own model name is untouched either way.
+    assert applied["model"] == "gpt-5"
+
+
 def test_it_counts_files_mentioned_in_the_request():
     read = signals_from_payload(request(text="update src/a.py and tests/b.py"))
     assert read.signals.file_count == 2

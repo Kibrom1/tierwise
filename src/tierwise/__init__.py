@@ -72,7 +72,7 @@ from .telemetry import (
     TelemetrySink,
     read_events,
 )
-from .thresholds import DEFAULT_THRESHOLDS, Thresholds
+from .thresholds import DEFAULT_THRESHOLDS, QUALITY_FLOOR_PRESETS, Thresholds, quality_floor_names
 from .tuner import BoundaryAdjustment, ThresholdTuner, TuningResult
 
 __version__ = "0.8.0"
@@ -93,6 +93,7 @@ __all__ = [
     "default_classifier",
     "DEFAULT_MODELS",
     "DEFAULT_THRESHOLDS",
+    "QUALITY_FLOOR_PRESETS",
     "DiffStat",
     "ENFORCE",
     "EscalationPolicy",
@@ -112,6 +113,7 @@ __all__ = [
     "parse_name_status",
     "parse_numstat",
     "price_for",
+    "quality_floor_names",
     "PRICES",
     "ProxyPlan",
     "ProxyRouter",
