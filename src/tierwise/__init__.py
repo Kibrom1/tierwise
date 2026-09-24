@@ -76,6 +76,7 @@ from .telemetry import (
 )
 from .thresholds import DEFAULT_THRESHOLDS, QUALITY_FLOOR_PRESETS, Thresholds, quality_floor_names
 from .tuner import BoundaryAdjustment, ThresholdTuner, TuningResult
+from .verify import TierCheck, VerifyError, VerifyResult, verify_models
 
 __version__ = "0.8.0"
 
@@ -152,5 +153,9 @@ __all__ = [
     "ThresholdTuner",
     "Tier",
     "TuningResult",
+    "TierCheck",
+    "VerifyError",
+    "VerifyResult",
+    "verify_models",
     "Verifier",
 ]
