@@ -17,6 +17,8 @@ from .router import Router, RouterConfig
 from .telemetry import JsonlSink, NullSink, StderrSink
 from .proxy import DEFAULT_PORT, DEFAULT_UPSTREAM, ENFORCE, SHADOW, ProxyRouter, serve
 from .replay import replay
+from .budget import BudgetState
+from .budget import resolve_path as resolve_budget_path
 from .thresholds import QUALITY_FLOOR_PRESETS, Thresholds, resolve_path
 from .tuner import ThresholdTuner
 
@@ -108,6 +110,17 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="write a named quality-floor preset as the starting cuts "
                              "and persist it (like --tune, but by name instead of evidence)")
 
+    budget = subparsers.add_parser(
+        "budget", help="print or set the spend ceiling that turns enforcement off"
+    )
+    budget.add_argument("--set", type=float, metavar="USD", dest="set_limit",
+                        help="set the ceiling in USD and persist it")
+    budget.add_argument("--period", choices=["daily", "weekly", "monthly"], default=None,
+                        help="ceiling period (default: monthly, or whatever is already set)")
+    budget.add_argument("--clear", action="store_true",
+                        help="remove the ceiling -- serve never budget-blocks again")
+    budget.add_argument("--json", action="store_true", help="emit as JSON")
+
     tune = subparsers.add_parser(
         "tune", help="close the outer loop: retune thresholds from a decision log"
     )
@@ -150,6 +163,10 @@ def _build_parser() -> argparse.ArgumentParser:
     srv.add_argument("--telemetry", metavar="PATH", default="routing.jsonl",
                      help="decision log to append to (default: routing.jsonl)")
     srv.add_argument("--quiet", action="store_true", help="do not print each decision")
+    srv.add_argument("--budget-usd", type=float, default=None, metavar="USD",
+                     help="set/override the spend ceiling for this run (persists)")
+    srv.add_argument("--budget-period", choices=["daily", "weekly", "monthly"], default=None,
+                     help="ceiling period if --budget-usd is also given (default: monthly)")
     return parser
 
 
@@ -241,10 +258,49 @@ def _cmd_thresholds(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_budget(args: argparse.Namespace) -> int:
+    budget = BudgetState.load()
+    if args.clear:
+        budget = BudgetState()
+        budget.save()
+    elif args.set_limit is not None:
+        budget.limit_usd = args.set_limit
+        if args.period:
+            budget.period = args.period
+        budget.save()
+
+    payload = budget.to_dict()
+    payload["path"] = str(resolve_budget_path())
+    payload["remaining_usd"] = budget.remaining()
+    payload["exceeded"] = budget.exceeded()
+    if args.json:
+        print(json.dumps(payload, indent=2))
+        return 0
+
+    if budget.limit_usd is None:
+        print("no spend ceiling set -- serve never budget-blocks")
+        print(f"set one with: tierwise budget --set <usd> [--period daily|weekly|monthly]")
+        return 0
+    print(f"ceiling:   ${budget.limit_usd:.2f} / {budget.period}")
+    print(f"spent:     ${budget.spent_usd:.4f}")
+    print(f"remaining: ${payload['remaining_usd']:.4f}")
+    if payload["exceeded"]:
+        print("status:    CEILING HIT -- serve is not enforcing routing until the period rolls over")
+    return 0
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     mode = ENFORCE if args.enforce else SHADOW
+
+    budget = BudgetState.load()
+    if args.budget_usd is not None:
+        budget.limit_usd = args.budget_usd
+        if args.budget_period:
+            budget.period = args.budget_period
+        budget.save()
+
     router = Router(telemetry=JsonlSink(args.telemetry))
-    proxy = ProxyRouter(router=router, mode=mode)
+    proxy = ProxyRouter(router=router, mode=mode, budget=budget)
     server = serve(port=args.port, upstream=args.upstream, proxy=proxy,
                    verbose=not args.quiet)
 
@@ -252,6 +308,10 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     print(f"mode: {mode}" + ("" if args.enforce else
           "  (reporting only; requests are forwarded unchanged)"))
     print(f"log:  {args.telemetry}")
+    if budget.limit_usd is not None:
+        state = "CEILING ALREADY HIT" if budget.exceeded() else "under ceiling"
+        print(f"budget: ${budget.limit_usd:.2f} / {budget.period}  "
+              f"(${budget.spent_usd:.4f} spent, {state})")
     print()
     print("  export ANTHROPIC_BASE_URL=http://127.0.0.1:%d" % args.port)
     print()
@@ -329,6 +389,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "explain": _cmd_explain,
         "models": _cmd_models,
         "thresholds": _cmd_thresholds,
+        "budget": _cmd_budget,
         "tune": _cmd_tune,
         "replay": _cmd_replay,
         "serve": _cmd_serve,

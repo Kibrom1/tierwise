@@ -11,6 +11,7 @@ import pytest
 from tierwise import (
     ENFORCE,
     SHADOW,
+    BudgetState,
     JsonlSink,
     ModelMap,
     ProxyRouter,
@@ -44,6 +45,51 @@ def proxy(mode=SHADOW, telemetry=None):
 
 
 # -- reading a request -------------------------------------------------------
+
+
+# -- budget ceiling -----------------------------------------------------------
+
+def test_exceeded_budget_suppresses_enforcement_even_in_enforce_mode():
+    budget = BudgetState(limit_usd=1.0, spent_usd=1.0)
+    router = Router(model_map=MODELS)
+    router_proxy = ProxyRouter(router=router, mode=ENFORCE, model_map=MODELS, budget=budget)
+
+    plan = router_proxy.plan(request(text="do the big cross-cutting billing rewrite " * 20,
+                                      tools=[{"name": "x"}] * 5))
+    assert plan.budget_blocked is True
+    assert plan.enforced is False
+
+    applied = router_proxy.apply(request(model="claude-opus-5"), plan)
+    assert applied["model"] == "claude-opus-5"  # untouched -- enforcement was suppressed
+
+
+def test_budget_under_ceiling_still_enforces():
+    budget = BudgetState(limit_usd=100.0, spent_usd=1.0)
+    router = Router(model_map=MODELS)
+    router_proxy = ProxyRouter(router=router, mode=ENFORCE, model_map=MODELS, budget=budget)
+
+    plan = router_proxy.plan(request(text="fix a typo in a comment"))
+    assert plan.budget_blocked is False
+
+
+def test_observe_records_real_spend_against_the_budget():
+    budget = BudgetState(limit_usd=10.0)
+    router_proxy = ProxyRouter(router=Router(model_map=MODELS), mode=SHADOW,
+                               model_map=MODELS, budget=budget)
+
+    usage = {"input_tokens": 1000, "output_tokens": 500}
+    router_proxy.observe("conv-1", usage, model="claude-sonnet-5")
+
+    assert budget.spent_usd > 0.0
+
+
+def test_observe_without_budget_does_not_error():
+    router_proxy = proxy()  # no budget configured
+    router_proxy.observe("conv-1", {"input_tokens": 10, "output_tokens": 10},
+                          model="claude-sonnet-5")
+    # nothing to assert beyond "did not raise" -- an unconfigured proxy must
+    # pay nothing for carrying budget support around
+
 
 
 def test_openai_shaped_payload_routes_the_same_as_anthropic_shaped():

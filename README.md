@@ -59,6 +59,23 @@ Whichever client, the tier-vs-model mapping still comes from `tierwise.toml`
 (or `TIERWISE_MODEL_LOW/_MEDIUM/_HIGH`), so route each client's tiers to model
 names that provider actually serves.
 
+**A spend ceiling, not a governance system.** `tierwise serve` can track real
+cost (from each response's own `usage`) against a ceiling you set, and turns
+*enforcement* off -- not the request -- once it's hit:
+
+```bash
+tierwise budget --set 20 --period monthly     # $20/month, then falls back to shadow-only
+tierwise serve --enforce                       # normal enforce mode
+tierwise budget                                # check what's been spent
+```
+
+This is deliberately not multi-tenant budgeting (no teams, no per-key limits) --
+it is one developer's own ceiling on their own machine. Hitting it never fails
+a request: TierWise just stops rerouting until the period rolls over, so the
+client always gets exactly the model it would have gotten without TierWise in
+the loop at all. `--budget-usd`/`--budget-period` on `tierwise serve` set the
+same ceiling inline instead of calling `tierwise budget` first.
+
 **New here?** [USAGE.md](USAGE.md) is the step-by-step guide for wiring this
 into a Claude-based agent or CI, and `examples/claude_agent_loop.py` runs the
 whole loop offline in one command.
