@@ -524,6 +524,29 @@ IDs, correct when written and certain to age, and wrong by construction for any
 other provider. They are labelled `default` precisely so a built-in never reads
 as a choice you made.
 
+**Configured is not the same as correct.** A model name can be right on the
+day it's set and wrong by the time it's used -- renamed, deprecated, or just
+typo'd. `tierwise models --verify` asks the provider's own model-listing
+endpoint whether each configured tier's name still exists, rather than
+trusting it until a request 404s mid-task:
+
+```console
+$ tierwise models --verify
+ok    low      claude-haiku-4-5-20251001
+ok    medium   claude-sonnet-5
+MISS  high     claude-opus-99-does-not-exist
+
+1 configured model(s) not found on anthropic -- renamed, deprecated, or a
+typo. Fix in tierwise.toml or the TIERWISE_MODEL_* env vars before this
+surprises you mid-task.
+```
+
+Needs an API key (`ANTHROPIC_API_KEY` by default; `--provider openai` reads
+`OPENAI_API_KEY`) since the check is a real call to the provider. This is
+deliberately not model *discovery* -- it never tries to guess which models
+belong at which tier from the list it gets back. It only checks names you
+already configured; assigning tiers is still your call.
+
 | Variable | Default |
 | --- | --- |
 | `TIERWISE_CONFIG` | nearest `tierwise.toml` / `tierwise.json` |

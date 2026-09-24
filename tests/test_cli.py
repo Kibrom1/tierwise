@@ -66,6 +66,55 @@ def test_models_command_marks_defaults_as_defaults(capsys):
     assert "built-in defaults, which age" in out
 
 
+def test_models_verify_reports_missing(capsys, monkeypatch):
+    from tierwise.mapping import ModelMap
+    from tierwise.models import Tier
+    from tierwise.verify import TierCheck, VerifyResult
+
+    def fake_verify_models(model_map, provider="anthropic", base_url=None):
+        return VerifyResult(provider=provider, checks=[
+            TierCheck(tier=Tier.LOW, model="claude-haiku-4-5-20251001", found=True),
+            TierCheck(tier=Tier.MEDIUM, model="claude-sonnet-5", found=True),
+            TierCheck(tier=Tier.HIGH, model="claude-opus-99-gone", found=False),
+        ])
+
+    monkeypatch.setattr("tierwise.cli.verify_models", fake_verify_models)
+
+    assert main(["models", "--verify", "--json"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["all_found"] is False
+    assert payload["checks"][2]["found"] is False
+
+
+def test_models_verify_all_found_exits_zero(capsys, monkeypatch):
+    from tierwise.models import Tier
+    from tierwise.verify import TierCheck, VerifyResult
+
+    def fake_verify_models(model_map, provider="anthropic", base_url=None):
+        return VerifyResult(provider=provider, checks=[
+            TierCheck(tier=t, model="m", found=True) for t in Tier
+        ])
+
+    monkeypatch.setattr("tierwise.cli.verify_models", fake_verify_models)
+
+    assert main(["models", "--verify"]) == 0
+    out = capsys.readouterr().out
+    assert "all configured models exist" in out
+
+
+def test_models_verify_reports_error_without_crashing(capsys, monkeypatch):
+    from tierwise.verify import VerifyError
+
+    def fake_verify_models(model_map, provider="anthropic", base_url=None):
+        raise VerifyError("no API key for anthropic -- set ANTHROPIC_API_KEY")
+
+    monkeypatch.setattr("tierwise.cli.verify_models", fake_verify_models)
+
+    assert main(["models", "--verify"]) == 1
+    out = capsys.readouterr().out
+    assert "ANTHROPIC_API_KEY" in out
+
+
 def test_missing_subcommand_exits(capsys):
     with pytest.raises(SystemExit):
         main([])

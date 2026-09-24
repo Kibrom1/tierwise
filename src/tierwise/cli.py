@@ -12,6 +12,7 @@ from . import __version__
 from .heuristics import CATEGORY_PRIORS, has_evidence
 from .heuristics import classify as heuristic_classify
 from .mapping import ModelMap
+from .verify import VerifyError, verify_models
 from .models import TaskSignals, Tier
 from .router import Router, RouterConfig
 from .telemetry import JsonlSink, NullSink, StderrSink
@@ -105,6 +106,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "models", help="print the tier -> model mapping and where each name came from"
     )
     models.add_argument("--json", action="store_true", help="emit as JSON")
+    models.add_argument("--verify", action="store_true",
+                        help="ask the provider's own model list whether each configured "
+                             "name still exists, instead of trusting it silently")
+    models.add_argument("--provider", choices=["anthropic", "openai"], default="anthropic",
+                        help="which provider to verify against (default: anthropic)")
+    models.add_argument("--base-url", default=None,
+                        help="override the provider's default API base URL")
     thresh = subparsers.add_parser("thresholds", help="print the thresholds currently in force")
     thresh.add_argument("--set-floor", choices=sorted(QUALITY_FLOOR_PRESETS),
                         help="write a named quality-floor preset as the starting cuts "
@@ -229,6 +237,32 @@ def _cmd_explain(args: argparse.Namespace) -> int:
 def _cmd_models(args: argparse.Namespace) -> int:
     mapping = ModelMap.resolve()
     described = mapping.describe()
+
+    if args.verify:
+        try:
+            result = verify_models(mapping, provider=args.provider, base_url=args.base_url)
+        except VerifyError as error:
+            if args.json:
+                print(json.dumps({"error": str(error)}, indent=2))
+            else:
+                print(f"could not verify against {args.provider}: {error}")
+            return 1
+
+        if args.json:
+            print(json.dumps(result.to_dict(), indent=2))
+            return 0 if result.all_found else 1
+
+        for check in result.checks:
+            mark = "ok  " if check.found else "MISS"
+            print(f"{mark}  {check.tier.value:<7} {check.model}")
+        print()
+        if result.all_found:
+            print(f"all configured models exist on {args.provider}")
+            return 0
+        print(f"{len(result.missing)} configured model(s) not found on {args.provider} -- "
+              "renamed, deprecated, or a typo. Fix in tierwise.toml or the "
+              "TIERWISE_MODEL_* env vars before this surprises you mid-task.")
+        return 1
 
     if args.json:
         print(json.dumps(described, indent=2))
