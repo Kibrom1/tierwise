@@ -30,7 +30,7 @@ from .diff import (
     signals_from_numstat,
     signals_from_stat,
 )
-from .mapping import DEFAULT_MODELS, ModelMap
+from .mapping import DEFAULT_MODELS, FallbackMap, ModelMap
 from .models import Classification, RoutingDecision, Source, TaskSignals, Tier
 from .budget import BudgetState
 from .pricing import (
@@ -96,6 +96,7 @@ __all__ = [
     "CostFn",
     "default_classifier",
     "DEFAULT_MODELS",
+    "FallbackMap",
     "DEFAULT_THRESHOLDS",
     "QUALITY_FLOOR_PRESETS",
     "DiffStat",

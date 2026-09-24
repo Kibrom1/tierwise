@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from tierwise import ModelMap, Router, TaskSignals, Tier
+from tierwise import FallbackMap, ModelMap, Router, TaskSignals, Tier
 from tierwise.config import ConfigError, find_config, load_config
 from tierwise.mapping import CONFIG, DEFAULT, ENV, EXPLICIT
 
@@ -31,6 +31,12 @@ needs_toml = pytest.mark.skipif(not HAS_TOML, reason="no TOML parser on this Pyt
 def write_json(directory, models):
     path = directory / "tierwise.json"
     path.write_text(json.dumps({"models": models}))
+    return path
+
+
+def write_json_table(directory, key, table):
+    path = directory / "tierwise.json"
+    path.write_text(json.dumps({key: table}))
     return path
 
 
@@ -166,3 +172,58 @@ def test_unconfigured_is_reported_as_such():
     assert described["configured"] is False
     assert described["config_file"] is None
     assert all(e["from"] == DEFAULT for e in described["models"].values())
+
+
+# -- FallbackMap ---------------------------------------------------------------
+
+def test_fallback_map_defaults_to_empty():
+    fallback = FallbackMap.resolve()
+    assert fallback.models == {}
+    assert fallback.for_tier(Tier.LOW) is None
+    assert fallback.for_tier(None) is None
+
+
+def test_fallback_from_config(tmp_path, monkeypatch):
+    monkeypatch.setenv("TIERWISE_CONFIG",
+                       str(write_json_table(tmp_path, "fallback_models", {"low": "backup-small"})))
+    fallback = FallbackMap.resolve()
+
+    assert fallback.for_tier(Tier.LOW) == "backup-small"
+    assert fallback.origins[Tier.LOW] == CONFIG
+    assert fallback.for_tier(Tier.HIGH) is None
+
+
+def test_fallback_env_beats_config(tmp_path, monkeypatch):
+    monkeypatch.setenv("TIERWISE_CONFIG",
+                       str(write_json_table(tmp_path, "fallback_models", {"low": "from-config"})))
+    monkeypatch.setenv("TIERWISE_FALLBACK_LOW", "from-env")
+    fallback = FallbackMap.resolve()
+
+    assert fallback.for_tier(Tier.LOW) == "from-env"
+    assert fallback.origins[Tier.LOW] == ENV
+
+
+def test_fallback_unknown_tier_raises(tmp_path, monkeypatch):
+    monkeypatch.setenv("TIERWISE_CONFIG",
+                       str(write_json_table(tmp_path, "fallback_models", {"extreme": "x"})))
+    with pytest.raises(ConfigError):
+        FallbackMap.resolve()
+
+
+def test_fallback_must_be_a_table(tmp_path, monkeypatch):
+    monkeypatch.setenv("TIERWISE_CONFIG",
+                       str(write_json_table(tmp_path, "fallback_models", "not-a-table")))
+    with pytest.raises(ConfigError):
+        FallbackMap.resolve()
+
+
+def test_fallback_empty_name_raises(tmp_path, monkeypatch):
+    monkeypatch.setenv("TIERWISE_CONFIG",
+                       str(write_json_table(tmp_path, "fallback_models", {"low": ""})))
+    with pytest.raises(ConfigError):
+        FallbackMap.resolve()
+
+
+def test_fallback_as_dict():
+    fallback = FallbackMap(models={Tier.LOW: "backup"})
+    assert fallback.as_dict() == {"low": "backup"}

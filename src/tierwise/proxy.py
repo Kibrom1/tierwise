@@ -39,7 +39,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from .mapping import ModelMap
+from .mapping import FallbackMap, ModelMap
 from .models import RoutingDecision, TaskSignals, Tier
 from .budget import BudgetState
 from .pricing import SwitchContext, actual_cost
@@ -228,6 +228,7 @@ class ProxyRouter:
         mode: str = SHADOW,
         model_map: Optional[ModelMap] = None,
         budget: Optional[BudgetState] = None,
+        fallback_map: Optional[FallbackMap] = None,
     ) -> None:
         if mode not in {SHADOW, ENFORCE}:
             raise ValueError(f"mode must be {SHADOW!r} or {ENFORCE!r}")
@@ -239,12 +240,26 @@ class ProxyRouter:
         #: then a no-op, so an unconfigured proxy pays nothing for carrying
         #: this around.
         self.budget = budget
+        #: An empty/unset FallbackMap means "no fallback for any tier" --
+        #: fallback_for() then always returns None, so an unconfigured proxy
+        #: behaves exactly as it did before this existed.
+        self.fallback_map = fallback_map or FallbackMap()
 
     def tier_of(self, model: str) -> Optional[Tier]:
         for tier, name in self.model_map.models.items():
             if name == model:
                 return tier
         return None
+
+    def fallback_for(self, model: str) -> Optional[str]:
+        """The configured fallback model for whichever tier `model` belongs to.
+
+        `model` may be a fallback model itself (already retried once) or a
+        model outside the tier map entirely (e.g. a client's own requested
+        model in shadow mode) -- both correctly resolve to no fallback, which
+        is what stops a retry loop from ever forming.
+        """
+        return self.fallback_map.for_tier(self.tier_of(model))
 
     def plan(self, payload: dict[str, Any], key: Optional[str] = None) -> ProxyPlan:
         key = key or conversation_key(payload)
@@ -316,6 +331,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # noqa: E40
 DEFAULT_UPSTREAM = "https://api.anthropic.com"
 DEFAULT_PORT = 8787
 
+#: Statuses that say "the provider or this specific model was unavailable,"
+#: not "your request was bad" -- the only ones worth retrying against a
+#: fallback. 529 is Anthropic's overloaded status; the rest are the usual
+#: 5xx infra codes plus a request timeout.
+_INFRA_ERROR_STATUSES = {408, 500, 502, 503, 504, 508, 529}
+
 #: Hop-by-hop headers must not be relayed.
 _SKIP_REQUEST_HEADERS = {"host", "content-length", "connection", "accept-encoding"}
 _SKIP_RESPONSE_HEADERS = {"content-length", "transfer-encoding", "connection", "content-encoding"}
@@ -369,12 +390,64 @@ class _Handler(BaseHTTPRequestHandler):
             with urllib.request.urlopen(request) as response:
                 self._begin(response.status, response.headers)
                 self._pump(response, key, model_used)
+                return
         except urllib.error.HTTPError as error:
-            # Upstream errors belong to the client unchanged, status and all.
+            if self._retry_with_fallback(error, body, headers, key, model_used):
+                return
+            # No fallback available, or the fallback failed too: the error
+            # belongs to the client unchanged, status and all.
             self._begin(error.code, error.headers)
             self._pump(error, key, model_used)
         except urllib.error.URLError as error:
             self._fail(502, f"upstream unreachable: {error.reason}")
+
+    def _retry_with_fallback(self, error: urllib.error.HTTPError, body: bytes,
+                              headers: dict, key: Optional[str],
+                              model_used: Optional[str]) -> bool:
+        """One retry, same tier, a different model -- only for infra failure.
+
+        `model_used` failing with a 5xx-class status says nothing about
+        whether the *tier* was right for the task; it says the provider or
+        that specific model was unavailable. Retrying at the same tier
+        against a configured fallback keeps that distinct from an
+        escalation-worthy outcome, which is a judgement about task
+        difficulty, not infrastructure. A non-infra status (4xx other than
+        a timeout, or no fallback configured for this tier) is never
+        retried -- this is deliberately narrow, not a general retry policy.
+        """
+        if error.code not in _INFRA_ERROR_STATUSES or not model_used:
+            return False
+        fallback = self.proxy.fallback_for(model_used)
+        if not fallback:
+            return False
+
+        try:
+            payload = json.loads(body)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return False
+        if not isinstance(payload, dict):
+            return False
+        payload = dict(payload)
+        payload["model"] = fallback
+        retry_body = json.dumps(payload).encode("utf-8")
+
+        if self.verbose:
+            print(f"!! {model_used} returned {error.code} -- retrying once with "
+                  f"fallback {fallback}", flush=True)
+
+        retry_request = urllib.request.Request(
+            self.upstream.rstrip("/") + self.path, data=retry_body, headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(retry_request) as response:
+                self._begin(response.status, response.headers)
+                self._pump(response, key, fallback)
+                return True
+        except (urllib.error.HTTPError, urllib.error.URLError):
+            # The fallback failed too -- fall through and surface the
+            # *original* error to the client, not the fallback's.
+            return False
 
     def _begin(self, status: int, headers) -> None:
         self.send_response(status)
