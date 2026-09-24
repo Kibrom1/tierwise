@@ -42,6 +42,13 @@ ENV_KEYS: dict[Tier, str] = {
 
 EXPLICIT, ENV, CONFIG, DEFAULT = "explicit", "env", "config", "default"
 
+FALLBACK_ENV_KEYS: dict[Tier, str] = {
+    Tier.LOW: "TIERWISE_FALLBACK_LOW",
+    Tier.MEDIUM: "TIERWISE_FALLBACK_MEDIUM",
+    Tier.HIGH: "TIERWISE_FALLBACK_HIGH",
+}
+
+
 
 @dataclass
 class ModelMap:
@@ -115,3 +122,60 @@ class ModelMap:
             "config_file": self.config_path,
             "configured": any(o != DEFAULT for o in self.origins.values()),
         }
+
+
+@dataclass
+class FallbackMap:
+    """Resolves a tier's *fallback* model -- for provider-error retry only.
+
+    Unset for a tier (the default: an empty map) means no fallback: a
+    provider error on that tier is relayed to the client unchanged, exactly
+    as if this did not exist. Deliberately kept separate from ModelMap --
+    a fallback name means something different from a tier's primary model.
+    It is a same-tier, emergency-only substitute for an unavailable
+    provider, not a routing destination the scorer ever chooses on its own,
+    and conflating the two would let a fallback quietly become "just
+    another tier option" instead of a last resort.
+    """
+
+    models: dict[Tier, str] = field(default_factory=dict)
+    origins: dict[Tier, str] = field(default_factory=dict)
+
+    @classmethod
+    def resolve(cls, config_path: str | Path | None = None) -> "FallbackMap":
+        """Build the map from the config file's [fallback_models] and env."""
+        models: dict[Tier, str] = {}
+        origins: dict[Tier, str] = {}
+
+        config = load_config(config_path)
+        from_config = config.get("fallback_models") or {}
+        if not isinstance(from_config, dict):
+            raise ConfigError("[fallback_models] must be a table of tier -> model name")
+
+        for key, value in from_config.items():
+            try:
+                tier = Tier(str(key).strip().lower())
+            except ValueError as exc:
+                raise ConfigError(
+                    f"unknown tier {key!r} in [fallback_models]; expected one of "
+                    f"{', '.join(t.value for t in Tier)}"
+                ) from exc
+            if not isinstance(value, str) or not value.strip():
+                raise ConfigError(f"[fallback_models].{key} must be a non-empty string")
+            models[tier], origins[tier] = value, CONFIG
+
+        for tier, key in FALLBACK_ENV_KEYS.items():
+            override = os.environ.get(key)
+            if override:
+                models[tier], origins[tier] = override, ENV
+
+        return cls(models=models, origins=origins)
+
+    def for_tier(self, tier: Optional[Tier]) -> Optional[str]:
+        """The fallback model for `tier`, or None if it has none / tier is None."""
+        if tier is None:
+            return None
+        return self.models.get(tier)
+
+    def as_dict(self) -> dict[str, str]:
+        return {tier.value: model for tier, model in self.models.items()}

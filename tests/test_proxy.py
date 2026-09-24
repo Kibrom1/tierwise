@@ -12,6 +12,7 @@ from tierwise import (
     ENFORCE,
     SHADOW,
     BudgetState,
+    FallbackMap,
     JsonlSink,
     ModelMap,
     ProxyRouter,
@@ -380,6 +381,167 @@ def test_an_unreachable_upstream_returns_a_readable_error(running):
         call_through(port, request())
     assert excinfo.value.code == 502
     assert b"upstream unreachable" in excinfo.value.read()
+
+# -- fallback on provider error -----------------------------------------------
+
+class _FlakyUpstream(BaseHTTPRequestHandler):
+    """Fails whatever the primary model is, succeeds on the fallback name."""
+
+    fail_model = "claude-opus-5"
+    fail_status = 503
+
+    def log_message(self, *args):
+        return
+
+    def do_POST(self):
+        length = int(self.headers.get("content-length") or 0)
+        sent = json.loads(self.rfile.read(length))
+        model = sent.get("model")
+        if model == self.fail_model:
+            self.send_response(self.fail_status)
+            self.send_header("Content-Type", "application/json")
+            body = json.dumps({"error": "flaky"}).encode()
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        body = json.dumps({
+            "model_received": model,
+            "usage": {"cache_read_input_tokens": 0, "output_tokens": 5},
+        }).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+class _AlwaysFailUpstream(BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        return
+
+    def do_POST(self):
+        length = int(self.headers.get("content-length") or 0)
+        self.rfile.read(length)
+        self.send_response(503)
+        body = json.dumps({"error": "down"}).encode()
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+@pytest.fixture
+def flaky_upstream():
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _FlakyUpstream)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_address[1]}"
+    server.shutdown()
+    server.server_close()
+
+
+@pytest.fixture
+def always_fail_upstream():
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _AlwaysFailUpstream)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_address[1]}"
+    server.shutdown()
+    server.server_close()
+
+
+def _run_proxy(upstream, fallback_map=None, mode=SHADOW):
+    router = Router(model_map=MODELS)
+    p = ProxyRouter(router=router, mode=mode, model_map=MODELS, fallback_map=fallback_map)
+    server = serve(port=0, upstream=upstream, proxy=p, verbose=False)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def test_infra_error_retries_once_against_the_configured_fallback(flaky_upstream):
+    fallback = FallbackMap(models={Tier.HIGH: "claude-opus-4-5"})
+    server = _run_proxy(flaky_upstream, fallback_map=fallback)
+    try:
+        port = server.server_address[1]
+        # request(model="claude-opus-5") -> tier HIGH -> fallback claude-opus-4-5
+        result = call_through(port, request(model="claude-opus-5"))
+        assert result["model_received"] == "claude-opus-4-5"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_no_fallback_configured_relays_the_original_error(flaky_upstream):
+    server = _run_proxy(flaky_upstream, fallback_map=None)
+    try:
+        port = server.server_address[1]
+        with pytest.raises(urllib.error.HTTPError) as excinfo:
+            call_through(port, request(model="claude-opus-5"))
+        assert excinfo.value.code == 503
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_fallback_also_failing_surfaces_the_original_error(always_fail_upstream):
+    fallback = FallbackMap(models={Tier.HIGH: "claude-opus-4-5"})
+    server = _run_proxy(always_fail_upstream, fallback_map=fallback)
+    try:
+        port = server.server_address[1]
+        with pytest.raises(urllib.error.HTTPError) as excinfo:
+            call_through(port, request(model="claude-opus-5"))
+        assert excinfo.value.code == 503
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_non_infra_status_is_never_retried(flaky_upstream):
+    """A 4xx (other than a timeout) is the client's problem, not an outage."""
+
+    class _BadRequestUpstream(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            return
+
+        def do_POST(self):
+            length = int(self.headers.get("content-length") or 0)
+            self.rfile.read(length)
+            self.send_response(400)
+            body = b'{"error": "bad request"}'
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    server_http = ThreadingHTTPServer(("127.0.0.1", 0), _BadRequestUpstream)
+    threading.Thread(target=server_http.serve_forever, daemon=True).start()
+    upstream = f"http://127.0.0.1:{server_http.server_address[1]}"
+
+    fallback = FallbackMap(models={Tier.HIGH: "claude-opus-4-5"})
+    server = _run_proxy(upstream, fallback_map=fallback)
+    try:
+        port = server.server_address[1]
+        with pytest.raises(urllib.error.HTTPError) as excinfo:
+            call_through(port, request(model="claude-opus-5"))
+        assert excinfo.value.code == 400
+    finally:
+        server.shutdown()
+        server.server_close()
+        server_http.shutdown()
+        server_http.server_close()
+
+
+def test_fallback_for_resolves_from_the_map():
+    fallback = FallbackMap(models={Tier.LOW: "backup-haiku"})
+    router_proxy = ProxyRouter(router=Router(model_map=MODELS), model_map=MODELS,
+                               fallback_map=fallback)
+    assert router_proxy.fallback_for("claude-haiku-4-5-20251001") == "backup-haiku"
+    assert router_proxy.fallback_for("claude-sonnet-5") is None
+    assert router_proxy.fallback_for("not-a-configured-model") is None
+
+
+def test_unconfigured_fallback_map_is_a_no_op():
+    router_proxy = ProxyRouter(router=Router(model_map=MODELS), model_map=MODELS)
+    assert router_proxy.fallback_for("claude-opus-5") is None
+
 
 
 # -- size, the signal a request actually carries ------------------------------

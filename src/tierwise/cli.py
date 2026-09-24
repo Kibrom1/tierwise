@@ -11,7 +11,7 @@ from typing import Optional, Sequence
 from . import __version__
 from .heuristics import CATEGORY_PRIORS, has_evidence
 from .heuristics import classify as heuristic_classify
-from .mapping import ModelMap
+from .mapping import FallbackMap, ModelMap
 from .models import TaskSignals, Tier
 from .router import Router, RouterConfig
 from .telemetry import JsonlSink, NullSink, StderrSink
@@ -299,8 +299,10 @@ def _cmd_serve(args: argparse.Namespace) -> int:
             budget.period = args.budget_period
         budget.save()
 
+    fallback_map = FallbackMap.resolve()
+
     router = Router(telemetry=JsonlSink(args.telemetry))
-    proxy = ProxyRouter(router=router, mode=mode, budget=budget)
+    proxy = ProxyRouter(router=router, mode=mode, budget=budget, fallback_map=fallback_map)
     server = serve(port=args.port, upstream=args.upstream, proxy=proxy,
                    verbose=not args.quiet)
 
@@ -312,6 +314,9 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         state = "CEILING ALREADY HIT" if budget.exceeded() else "under ceiling"
         print(f"budget: ${budget.limit_usd:.2f} / {budget.period}  "
               f"(${budget.spent_usd:.4f} spent, {state})")
+    if fallback_map.models:
+        pairs = ", ".join(f"{t.value}->{m}" for t, m in fallback_map.models.items())
+        print(f"fallback on provider error: {pairs}")
     print()
     print("  export ANTHROPIC_BASE_URL=http://127.0.0.1:%d" % args.port)
     print()

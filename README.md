@@ -444,6 +444,24 @@ what actually happened and returns a re-route when one is warranted:
 Capped at `EscalationPolicy(max_attempts=2)` so a hopeless task cannot walk
 itself to the top tier repeatedly.
 
+**Same idea, at the proxy.** `ERROR` not counting as a tier problem only helps
+if something also handles the infrastructure problem. `tierwise serve` can
+retry once, same tier, against a configured fallback model, when the
+provider itself returns an infra-shaped failure (5xx, a timeout, Anthropic's
+529 overloaded) -- never on a 4xx, which is the client's problem, not an
+outage:
+
+```toml
+[fallback_models]
+high = "claude-opus-4-5"   # if claude-opus-5 is down, retry once on this instead
+```
+
+or `TIERWISE_FALLBACK_LOW`/`_MEDIUM`/`_HIGH`. Unset (the default) means no
+fallback for that tier -- the error is relayed to the client exactly as
+before this existed. This is deliberately narrow: one retry, same tier,
+never a general retry policy, and never a way for a fallback to become "just
+another routing destination" the scorer picks from.
+
 ## The LLM classifier fallback
 
 The default is `StubClassifier`: **no network, no API key**. Ambiguous tasks sit
