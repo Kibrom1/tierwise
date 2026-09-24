@@ -149,6 +149,38 @@ def evaluate_switch(
     )
 
 
+def actual_cost(
+    model: str,
+    usage: dict,
+    prices: Optional[Callable[[str], Optional[ModelPrice]]] = None,
+) -> Optional[float]:
+    """What a completed call actually cost, from the provider's own `usage`.
+
+    Unlike `step_cost` (which assumes a call is either a full cache hit or a
+    full cache write, for comparing two candidate tiers before the call),
+    this reads the real breakdown a response reports -- base input, a cache
+    read, a cache write, and output are billed at different rates and a real
+    call can carry more than one. Returns None when the model's price is not
+    known, rather than guessing.
+    """
+    lookup = prices or price_for
+    price = lookup(model)
+    if price is None:
+        return None
+
+    base_input = int(usage.get("input_tokens") or 0)
+    cache_read = int(usage.get("cache_read_input_tokens") or 0)
+    cache_write = int(usage.get("cache_creation_input_tokens") or 0)
+    output = int(usage.get("output_tokens") or 0)
+
+    return (
+        base_input * price.input_per_mtok
+        + cache_read * price.input_per_mtok * price.cache_read_multiplier
+        + cache_write * price.input_per_mtok * price.cache_write_multiplier
+        + output * price.output_per_mtok
+    ) / MTOK
+
+
 def breakeven_output_tokens(
     incumbent: Tier, candidate: Tier, cached_tokens: int,
     model_for: Callable[[Tier], str],
