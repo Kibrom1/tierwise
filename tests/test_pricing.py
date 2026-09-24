@@ -10,6 +10,7 @@ from tierwise import (
     SwitchContext,
     TaskSignals,
     Tier,
+    actual_cost,
     breakeven_output_tokens,
     evaluate_switch,
     price_for,
@@ -188,3 +189,36 @@ def test_the_hold_is_visible_in_the_log():
                               incumbent=Tier.HIGH),
     )
     assert log.events[0]["source"] == "cache_hold"
+
+
+# -- actual_cost --------------------------------------------------------------
+
+def test_actual_cost_reads_the_real_usage_breakdown():
+    usage = {
+        "input_tokens": 100,
+        "cache_read_input_tokens": 50_000,
+        "cache_creation_input_tokens": 0,
+        "output_tokens": 200,
+    }
+    price = price_for("claude-sonnet-5")
+    expected = (100 * price.input_per_mtok
+                + 50_000 * price.input_per_mtok * price.cache_read_multiplier
+                + 200 * price.output_per_mtok) / 1_000_000
+    assert actual_cost("claude-sonnet-5", usage) == pytest.approx(expected)
+
+
+def test_actual_cost_charges_cache_write_and_read_separately():
+    usage = {"cache_read_input_tokens": 1000, "cache_creation_input_tokens": 500,
+              "output_tokens": 0}
+    price = price_for("claude-haiku-4-5-20251001")
+    expected = (1000 * price.input_per_mtok * price.cache_read_multiplier
+                + 500 * price.input_per_mtok * price.cache_write_multiplier) / 1_000_000
+    assert actual_cost("claude-haiku-4-5-20251001", usage) == pytest.approx(expected)
+
+
+def test_actual_cost_unknown_model_returns_none():
+    assert actual_cost("some-unpriced-model", {"output_tokens": 100}) is None
+
+
+def test_actual_cost_empty_usage_is_zero():
+    assert actual_cost("claude-opus-5", {}) == pytest.approx(0.0)

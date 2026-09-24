@@ -41,7 +41,8 @@ from typing import Any, Optional
 
 from .mapping import ModelMap
 from .models import RoutingDecision, TaskSignals, Tier
-from .pricing import SwitchContext
+from .budget import BudgetState
+from .pricing import SwitchContext, actual_cost
 from .router import Router
 
 #: Rough characters per token. Only ever used to compare magnitudes -- the real
@@ -187,6 +188,10 @@ class ProxyPlan:
     tier: Tier
     decision: RoutingDecision
     enforced: bool
+    #: True when enforce mode was suppressed for this one request because a
+    #: configured spend ceiling was already hit -- the decision itself is
+    #: still computed and logged, it just never reaches the client.
+    budget_blocked: bool = False
 
     @property
     def changed(self) -> bool:
@@ -199,6 +204,7 @@ class ProxyPlan:
             "tier": self.tier.value,
             "changed": self.changed,
             "enforced": self.enforced,
+            "budget_blocked": self.budget_blocked,
             "source": self.decision.source.value,
         }
 
@@ -221,6 +227,7 @@ class ProxyRouter:
         router: Optional[Router] = None,
         mode: str = SHADOW,
         model_map: Optional[ModelMap] = None,
+        budget: Optional[BudgetState] = None,
     ) -> None:
         if mode not in {SHADOW, ENFORCE}:
             raise ValueError(f"mode must be {SHADOW!r} or {ENFORCE!r}")
@@ -228,6 +235,10 @@ class ProxyRouter:
         self.model_map = model_map or (router.model_map if router else ModelMap.resolve())
         self.router = router or Router(model_map=self.model_map)
         self.conversations: dict[str, ConversationState] = {}
+        #: None means "no ceiling configured" -- every budget check below is
+        #: then a no-op, so an unconfigured proxy pays nothing for carrying
+        #: this around.
+        self.budget = budget
 
     def tier_of(self, model: str) -> Optional[Tier]:
         for tier, name in self.model_map.models.items():
@@ -252,12 +263,16 @@ class ProxyRouter:
                                      context=context)
         state.calls += 1
 
+        budget_blocked = bool(self.budget is not None and self.budget.exceeded())
+        enforced = self.mode == ENFORCE and not budget_blocked
+
         return ProxyPlan(
             requested_model=read.requested_model,
             routed_model=decision.model,
             tier=decision.tier,
             decision=decision,
-            enforced=self.mode == ENFORCE,
+            enforced=enforced,
+            budget_blocked=budget_blocked,
         )
 
     def apply(self, payload: dict[str, Any], plan: ProxyPlan) -> dict[str, Any]:
@@ -267,7 +282,8 @@ class ProxyRouter:
             payload["model"] = plan.routed_model
         return payload
 
-    def observe(self, key: str, usage: Optional[dict[str, Any]]) -> None:
+    def observe(self, key: str, usage: Optional[dict[str, Any]],
+                model: Optional[str] = None) -> None:
         """Learn the real token counts, which beat any estimate we made."""
         if not usage:
             return
@@ -279,6 +295,12 @@ class ProxyRouter:
         output = usage.get("output_tokens")
         if output:
             state.last_output_tokens = int(output)
+
+        if self.budget is not None and self.budget.limit_usd is not None and model:
+            cost = actual_cost(model, usage)
+            if cost:
+                self.budget.record_spend(cost)
+                self.budget.save()
 
 
 # ---------------------------------------------------------------------------
@@ -313,7 +335,7 @@ class _Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("content-length") or 0)
         raw = self.rfile.read(length) if length else b""
 
-        payload, plan, key = None, None, None
+        payload, plan, key, model_used = None, None, None, None
         try:
             payload = json.loads(raw)
         except (json.JSONDecodeError, UnicodeDecodeError):
@@ -324,14 +346,20 @@ class _Handler(BaseHTTPRequestHandler):
             plan = self.proxy.plan(payload, key)
             payload = self.proxy.apply(payload, plan)
             raw = json.dumps(payload).encode("utf-8")
+            model_used = payload.get("model")
             if self.verbose:
                 mark = "->" if plan.changed and plan.enforced else ("~ " if plan.changed else "  ")
+                if plan.budget_blocked:
+                    mark = "$ "
                 print(f"{mark} {plan.requested_model} -> {plan.routed_model} "
-                      f"[{plan.decision.source.value}]", flush=True)
+                      f"[{plan.decision.source.value}]"
+                      + (" (budget ceiling hit -- not enforced)" if plan.budget_blocked else ""),
+                      flush=True)
 
-        self._relay(raw, plan, key)
+        self._relay(raw, plan, key, model_used)
 
-    def _relay(self, body: bytes, plan: Optional[ProxyPlan], key: Optional[str]) -> None:
+    def _relay(self, body: bytes, plan: Optional[ProxyPlan], key: Optional[str],
+               model_used: Optional[str] = None) -> None:
         headers = {k: v for k, v in self.headers.items()
                    if k.lower() not in _SKIP_REQUEST_HEADERS}
         request = urllib.request.Request(
@@ -340,11 +368,11 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             with urllib.request.urlopen(request) as response:
                 self._begin(response.status, response.headers)
-                self._pump(response, key)
+                self._pump(response, key, model_used)
         except urllib.error.HTTPError as error:
             # Upstream errors belong to the client unchanged, status and all.
             self._begin(error.code, error.headers)
-            self._pump(error, key)
+            self._pump(error, key, model_used)
         except urllib.error.URLError as error:
             self._fail(502, f"upstream unreachable: {error.reason}")
 
@@ -356,7 +384,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Transfer-Encoding", "chunked")
         self.end_headers()
 
-    def _pump(self, response, key: Optional[str]) -> None:
+    def _pump(self, response, key: Optional[str], model_used: Optional[str] = None) -> None:
         """Stream the response through, keeping a copy only to read `usage`."""
         collected = bytearray()
         while True:
@@ -370,7 +398,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(b"0\r\n\r\n")
         self.wfile.flush()
         if key:
-            self.proxy.observe(key, _usage_from(bytes(collected)))
+            self.proxy.observe(key, _usage_from(bytes(collected)), model_used)
 
     def _fail(self, status: int, message: str) -> None:
         body = json.dumps({"error": {"type": "tierwise_proxy_error", "message": message}})

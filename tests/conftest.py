@@ -21,3 +21,15 @@ def isolated_thresholds(tmp_path, monkeypatch):
     """
     monkeypatch.setenv("TIERWISE_THRESHOLDS", str(tmp_path / "thresholds.json"))
     return tmp_path / "thresholds.json"
+
+
+@pytest.fixture(autouse=True)
+def isolated_budget(tmp_path, monkeypatch):
+    """Never read or write the developer's own spend ceiling/state.
+
+    Same reasoning as isolated_thresholds: without this, a test run on a
+    machine that has configured a real budget would inherit its spend, and a
+    budget test would overwrite real state.
+    """
+    monkeypatch.setenv("TIERWISE_BUDGET", str(tmp_path / "budget.json"))
+    return tmp_path / "budget.json"

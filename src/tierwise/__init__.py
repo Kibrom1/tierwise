@@ -32,11 +32,13 @@ from .diff import (
 )
 from .mapping import DEFAULT_MODELS, ModelMap
 from .models import Classification, RoutingDecision, Source, TaskSignals, Tier
+from .budget import BudgetState
 from .pricing import (
     PRICES,
     ModelPrice,
     SwitchContext,
     SwitchVerdict,
+    actual_cost,
     breakeven_output_tokens,
     evaluate_switch,
     price_for,
@@ -79,11 +81,13 @@ __version__ = "0.8.0"
 
 __all__ = [
     "__version__",
+    "actual_cost",
     "AnthropicClassifier",
     "as_outcome",
     "Attempt",
     "BoundaryAdjustment",
     "breakeven_output_tokens",
+    "BudgetState",
     "CallFn",
     "Classification",
     "Classifier",
